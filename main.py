@@ -191,11 +191,24 @@ class Molecule:
             return "quaternary"
 
     def to_smiles(self) -> str:
-        """分子を SMILES 文字列に変換する。"""
+        """分子を正規化 (canonical) SMILES 文字列に変換する。
+        全ての候補開始点から SMILES を生成し、辞書順最小のものを選ぶ。
+        これにより同じ分子は常に同じ SMILES を返す。
+        """
         if self.carbon_count == 0:
             return ""
-        visited = [False] * self.carbon_count
-        return self._build_smiles(0, visited)
+        # 末端炭素 (隣接炭素が1以下) を優先候補とする
+        terminals = [i for i in range(self.carbon_count)
+                     if len(self.carbons[i]["neighbors"]) <= 1]
+        # 末端がなければ全ノードを候補に
+        candidates = terminals if terminals else list(range(self.carbon_count))
+        best = None
+        for start in candidates:
+            visited = [False] * self.carbon_count
+            s = self._build_smiles(start, visited)
+            if best is None or s < best:
+                best = s
+        return best or ""
 
     def _build_smiles(self, idx: int, visited: list[bool]) -> str:
         visited[idx] = True
@@ -800,6 +813,45 @@ class ReactResponse(BaseModel):
 #  SECTION 7:  エンドポイント
 # =====================================================================
 
+# ---------------------------------------------------------------------------
+# SMILES 正規化ヘルパー
+# ---------------------------------------------------------------------------
+def canonicalize_smiles(smiles: str) -> str:
+    """
+    SMILES 文字列を正規化する。
+    パース可能なら Molecule を経由して canonical SMILES を生成。
+    パース不可能な場合は元の文字列をそのまま返す。
+    特殊トークン (NANO_HEAD, NANO_BODY, etc.) はそのまま返す。
+    """
+    # 特殊トークンはそのまま返す
+    special_tokens = {"NANO_HEAD", "NANO_BODY", "NANOPUTIAN", "HEAT", "SOLVENT",
+                      "MYSTERY", "ALL", "AlCl3", "Mg", "O=O", "C=O", "HCl",
+                      "HBr", "ClCl", "BrBr"}
+    if smiles in special_tokens:
+        return smiles
+
+    # ハロアルカン (Cl, Br, F, I を含む) をまず試す
+    mol = parse_haloalkane_smiles(smiles)
+    if mol is not None:
+        return mol.to_smiles()
+
+    # アルカンを試す
+    mol = parse_alkane_smiles(smiles)
+    if mol is not None:
+        return mol.to_smiles()
+
+    # パース不可能 → 元の SMILES をそのまま返す
+    return smiles
+
+
+@app.post("/canonicalize")
+async def canonicalize_endpoint(body: dict):
+    """SMILES を正規化 (canonical) 形式に変換する。"""
+    smiles = body.get("smiles", "")
+    canonical = canonicalize_smiles(smiles)
+    return {"original": smiles, "canonical": canonical}
+
+
 @app.get("/")
 async def root():
     """ヘルスチェック & API 情報"""
@@ -807,12 +859,13 @@ async def root():
     return {
         "service": "ChemFactory Tier 1+2 Hybrid API",
         "status": "running",
-        "version": "0.3.0",
+        "version": "0.3.1",
         "description": "Tier 1 ルールベース + Tier 2 AI 推論ハイブリッド反応シミュレーター",
         "tier2_ai_enabled": hf_configured,
         "tier2_ai_note": "HF_TOKEN 環境変数を設定すると Tier 2 AI 推論が有効になります" if not hf_configured else "Tier 2 AI 推論が有効です",
         "endpoints": {
             "POST /react": "化学反応を実行 (Tier 1: ルールベース → Tier 2: AI フォールバック)",
+            "POST /canonicalize": "SMILES を正規化形式に変換",
             "GET /docs": "Swagger UI (API ドキュメント)",
         },
     }
