@@ -1,5 +1,5 @@
 """
-ChemFactory – Phase 0 + Phase 1 API (Tier 1 + Tier 2 Hybrid)
+ChemFactory – Full Synthesis API (Tier 1 + Tier 2 Hybrid)
 ==============================================================
 Tier 1: ローカルルールベース処理 (Pure Python, RDKit-free)
 Tier 2: 外部 AI 推論フォールバック (Hugging Face Inference API)
@@ -8,13 +8,14 @@ Phase 0: アルカンのラジカルハロゲン化  R-H + X₂ --hν→ R-X + H
 Phase 1: ハロアルカンの置換/脱離反応
          - SN2 (低温 + 非プロトン性溶媒) R-X + Nu⁻ → R-Nu + X⁻
          - E2  (高温)                     R-X + Base → Alkene + HX + Base-H
-Tier 2:  未知の組み合わせ → HF 反応予測 AI へフォールバック
-
-アーキテクチャ:
-  1. /react リクエスト受信
-  2. Tier 1 ルールベースで反応タイプ判定
-  3. Tier 1 で対応不可 → Tier 2 AI 推論 (HF Inference API)
-  4. Tier 2 タイムアウト/エラー → タール化ゲームオーバー
+Phase 2: グリニャール試薬
+         - 調製:  R-X + Mg → R-Mg-X
+         - 酸化:  R-Mg-X + O₂ → R-OH
+         - 求核付加: R-Mg-X + R'CHO → R-CH(OH)-R'
+Phase 3: 芳香族求電子置換 (EAS)
+         - Friedel-Crafts アシル化: ArH + RCOCl + AlCl₃ → ArCOR + HCl
+Phase 4: ナノプシャン組立 (NANO_HEAD + NANO_BODY → NANOPUTIAN)
+Tier 2:  未知の組み合わせ → タール化
 """
 
 from __future__ import annotations
@@ -200,27 +201,27 @@ class Molecule:
         visited[idx] = True
         c = self.carbons[idx]
 
-        # ハロゲン置換基
-        hal_str = ""
-        for h in c["halogens"]:
-            if len(h) == 1:
-                hal_str += h
-            else:
-                hal_str += f"({h})"
-
-        # その他の置換基 (OH, NH2, etc.)
-        sub_str = ""
-        for s in c.get("substituents", []):
-            if len(s) == 1:
-                sub_str += s
-            else:
-                sub_str += f"({s})"
-
         # 隣接する未訪問の炭素
         unvisited_neighbors = [n for n in c["neighbors"] if not visited[n]]
 
+        # ハロゲン置換基 — 分岐があるときだけ括弧で囲む
+        hal_parts = []
+        for h in c["halogens"]:
+            hal_parts.append(h)
+
+        # その他の置換基 (OH, NH2, etc.)
+        sub_parts = []
+        for s in c.get("substituents", []):
+            sub_parts.append(s)
+
+        # 終端炭素 (先に進む炭素がない)
         if not unvisited_neighbors:
-            return f"C{hal_str}{sub_str}"
+            suffix = ""
+            for h in hal_parts:
+                suffix += h
+            for s in sub_parts:
+                suffix += s
+            return f"C{suffix}"
 
         main = unvisited_neighbors[0]
         branches = unvisited_neighbors[1:]
@@ -228,7 +229,15 @@ class Molecule:
         # 二重結合判定
         bond_char = "=" if main in c.get("double_bond_to", []) else ""
 
-        result = f"C{hal_str}{sub_str}"
+        # 分岐がある場合: ハロゲン/置換基はブランチとして括弧に入れる
+        result = "C"
+        # ハロゲンをブランチとして追加
+        for h in hal_parts:
+            result += f"({h})"
+        # 置換基をブランチとして追加
+        for s in sub_parts:
+            result += f"({s})"
+        # 炭素ブランチ
         for branch in branches:
             br_bond = "=" if branch in c.get("double_bond_to", []) else ""
             result += f"({br_bond}{self._build_smiles(branch, visited)})"
@@ -592,22 +601,65 @@ def e2_elimination(mol: Molecule) -> list[dict]:
 #  SECTION 4:  反応タイプの自動判定
 # =====================================================================
 
+# グリニャール試薬のパターン検出
+def _is_grignard_reagent(smiles: str) -> bool:
+    """SMILESがグリニャール試薬 (R-Mg-X) かどうかを判定する。"""
+    return "[Mg]" in smiles or "Mg" in smiles
+
+def _parse_grignard(smiles: str) -> Optional[dict]:
+    """
+    グリニャール試薬のSMILESをパースする。
+    例: [CH3][Mg][Cl] → {"r_group": "C", "carbon_count": 1, "halogen": "Cl"}
+    例: [CH3][CH2][Mg][Cl] → {"r_group": "CC", "carbon_count": 2, "halogen": "Cl"}
+    """
+    import re as _re
+    # パターン: [CHn]...[Mg][X]
+    pattern = _re.compile(r'^((?:\[CH\d?\])+)\[Mg\]\[(Cl|Br|I)\]$')
+    m = pattern.match(smiles)
+    if not m:
+        return None
+    ch_groups = _re.findall(r'\[CH(\d?)\]', m.group(1))
+    carbon_count = len(ch_groups)
+    r_group = "C" * carbon_count
+    halogen = m.group(2)
+    return {"r_group": r_group, "carbon_count": carbon_count, "halogen": halogen}
+
+
 def detect_reaction_type(
     reagent_1: str,
     reagent_2: str,
     condition_light: bool,
     temperature: Optional[int],
     solvent_type: Optional[str],
+    catalyst_alcl3: bool = False,
 ) -> str:
     """
     入力試薬から反応タイプを自動判定する。
 
     Returns:
-        "radical_halogenation" | "substitution_elimination" | "unknown"
+        "radical_halogenation" | "substitution_elimination" |
+        "grignard_preparation" | "grignard_reaction" |
+        "eas_acylation" | "nanoputian_assembly" | "unknown"
     """
+    # ナノプシャン組立: NANO_HEAD + NANO_BODY
+    if set([reagent_1, reagent_2]) == {"NANO_HEAD", "NANO_BODY"}:
+        return "nanoputian_assembly"
+
     # ハロゲン分子 (X₂) + アルカン + 光 → ラジカルハロゲン化
     if reagent_2 in HALOGEN_MAP:
         return "radical_halogenation"
+
+    # マグネシウム → グリニャール試薬調製
+    if reagent_2 == "Mg":
+        return "grignard_preparation"
+
+    # グリニャール試薬 + 求電子剤 → グリニャール反応
+    if _is_grignard_reagent(reagent_1):
+        return "grignard_reaction"
+
+    # 芳香族 + 塩化アシル + AlCl3 触媒 → EAS
+    if catalyst_alcl3 and ("c1ccccc1" in reagent_1 or "c1ccccc1" in reagent_2):
+        return "eas_acylation"
 
     # 求核剤/塩基 + ハロアルカン → 置換 or 脱離
     if reagent_2 in NUCLEOPHILE_BASE_MAP:
@@ -660,16 +712,16 @@ def _name_haloalkane(mol: Molecule, halogen: str, carbon_class: str) -> str:
 # =====================================================================
 
 class ReactRequest(BaseModel):
-    """反応リクエスト (Phase 0 + Phase 1 統合)"""
+    """反応リクエスト (全Phase統合)"""
     reagent_1: str = Field(
         ...,
-        examples=["C", "CC", "CCCl", "CC(Cl)C"],
-        description="基質の SMILES (アルカン or ハロアルカン)",
+        examples=["C", "CC", "CCCl", "CC(Cl)C", "c1ccccc1"],
+        description="基質の SMILES (アルカン, ハロアルカン, 芳香族, グリニャール試薬, 特殊トークン)",
     )
     reagent_2: str = Field(
         ...,
-        examples=["ClCl", "BrBr", "O", "[O-]"],
-        description="試薬の SMILES (ハロゲン分子 or 求核剤/塩基)",
+        examples=["ClCl", "BrBr", "O", "Mg", "CC(=O)Cl", "NANO_BODY"],
+        description="試薬の SMILES (ハロゲン分子, 求核剤, Mg, 塩化アシル, 特殊トークン)",
     )
     condition_light: bool = Field(
         ...,
@@ -688,6 +740,11 @@ class ReactRequest(BaseModel):
         None,
         examples=["protic", "aprotic"],
         description="溶媒タイプ: 'protic' (プロトン性) or 'aprotic' (非プロトン性)。Phase 1 で使用。",
+    )
+    # --- Phase 2/3 追加パラメータ ---
+    catalyst_AlCl3: bool = Field(
+        False,
+        description="AlCl₃ 触媒の有無 (Phase 3 EAS 用)",
     )
 
 
@@ -785,6 +842,7 @@ async def react(req: ReactRequest):
     rxn_type = detect_reaction_type(
         req.reagent_1, req.reagent_2,
         req.condition_light, req.temperature, req.solvent_type,
+        getattr(req, 'catalyst_AlCl3', False),
     )
 
     # ==================================================================
@@ -798,6 +856,27 @@ async def react(req: ReactRequest):
     # ==================================================================
     if rxn_type == "substitution_elimination":
         return _handle_substitution_elimination(req)
+
+    # ==================================================================
+    # Phase 2: グリニャール試薬
+    # ==================================================================
+    if rxn_type == "grignard_preparation":
+        return _handle_grignard_preparation(req)
+
+    if rxn_type == "grignard_reaction":
+        return _handle_grignard_reaction(req)
+
+    # ==================================================================
+    # Phase 3: 芳香族求電子置換 (EAS)
+    # ==================================================================
+    if rxn_type == "eas_acylation":
+        return _handle_eas_acylation(req)
+
+    # ==================================================================
+    # Phase 4: ナノプシャン組立
+    # ==================================================================
+    if rxn_type == "nanoputian_assembly":
+        return _handle_nanoputian_assembly(req)
 
     # ==================================================================
     # Tier 1 で未定義 → Tier 2 AI 推論フォールバック
@@ -1068,7 +1147,262 @@ def _handle_substitution_elimination(req: ReactRequest) -> ReactResponse:
 
 
 # =====================================================================
-#  SECTION 8:  Tier 2 – AI 推論フォールバック (Hugging Face Inference API)
+#  SECTION 8:  Phase 2 – グリニャール試薬
+# =====================================================================
+
+def _handle_grignard_preparation(req: ReactRequest) -> ReactResponse:
+    """Phase 2: グリニャール試薬の調製 (R-X + Mg → R-Mg-X)"""
+    solvent = req.solvent_type if req.solvent_type else "aprotic"
+
+    # プロトン性溶媒ではグリニャール試薬が分解する
+    if solvent == "protic":
+        return ReactResponse(
+            status=ResultStatus.GAME_OVER,
+            message=(
+                "💥 グリニャール試薬がプロトン性溶媒 (水, アルコール等) と激しく反応！\n"
+                "炭素上のδ-がプロトンと酸塩基反応を起こし、元のアルカンに戻ってしまいました。\n"
+                "⚠️ 必ず乾燥した非プロトン性溶媒 (エーテル等) を使用してください。"
+            ),
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_preparation_failure",
+            products=[
+                ProductInfo(
+                    smiles=TAR_SMILES,
+                    name=TAR_NAME,
+                    carbon_class="N/A",
+                    reaction_type="decomposition",
+                )
+            ],
+            condition_summary="プロトン性溶媒 → グリニャール試薬分解",
+        )
+
+    # ハロアルカンをパースして R 基を特定
+    mol = parse_haloalkane_smiles(req.reagent_1)
+    if mol is None:
+        return ReactResponse(
+            status=ResultStatus.NO_REACTION,
+            message=f"⚠️ '{req.reagent_1}' は有効なハロアルカンではありません。グリニャール試薬にはC-X結合が必要です。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_preparation",
+        )
+
+    # ハロゲンを特定
+    halogen = None
+    for c in mol.carbons:
+        if c["halogens"]:
+            halogen = c["halogens"][0]
+            break
+    if halogen is None:
+        return ReactResponse(
+            status=ResultStatus.NO_REACTION,
+            message="⚠️ ハロゲンが見つかりません。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_preparation",
+        )
+
+    # グリニャール試薬の SMILES を生成: [CHn][CHn]...[Mg][X]
+    n_carbons = mol.carbon_count
+    ch_groups = []
+    for i in range(n_carbons):
+        c = mol.carbons[i]
+        # ハロゲンを除いた水素数 (C-X が C-Mg-X になるので H は増えない)
+        h_on_c = c["h_count"]
+        if h_on_c == 0:
+            ch_groups.append("[C]")
+        elif h_on_c == 1:
+            ch_groups.append("[CH]")
+        elif h_on_c == 2:
+            ch_groups.append("[CH2]")
+        else:
+            ch_groups.append("[CH3]")
+
+    grignard_smiles = "".join(ch_groups) + f"[Mg][{halogen}]"
+
+    c_count = mol.carbon_count
+    base_name = CARBON_PREFIX.get(c_count, f"C{c_count}")
+    product_name = f"{base_name}マグネシウム{HALOGEN_JP.get(halogen, halogen)}化物 (グリニャール試薬)"
+
+    return ReactResponse(
+        status=ResultStatus.SUCCESS,
+        message=(
+            f"✨ グリニャール試薬調製成功！\n"
+            f"R-X + Mg → R-Mg-X\n"
+            f"非常に強力な求核剤/塩基ができました。水に触れさせないよう注意！"
+        ),
+        reagent_1_smiles=req.reagent_1,
+        reagent_2_smiles=req.reagent_2,
+        reaction_type="grignard_preparation",
+        products=[
+            ProductInfo(
+                smiles=grignard_smiles,
+                name=product_name,
+                carbon_class="grignard",
+                reaction_type="grignard_preparation",
+            )
+        ],
+        condition_summary=f"R-X + Mg → R-Mg-X (非プロトン性溶媒中)",
+    )
+
+
+def _handle_grignard_reaction(req: ReactRequest) -> ReactResponse:
+    """Phase 2: グリニャール反応 (R-Mg-X + 求電子剤 → 生成物)"""
+    grignard = _parse_grignard(req.reagent_1)
+    if grignard is None:
+        return ReactResponse(
+            status=ResultStatus.NO_REACTION,
+            message=f"⚠️ '{req.reagent_1}' は有効なグリニャール試薬ではありません。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_reaction",
+        )
+
+    r2 = req.reagent_2
+    n_c = grignard["carbon_count"]
+    r_group = grignard["r_group"]
+
+    # プロトン性溶媒チェック
+    solvent = req.solvent_type if req.solvent_type else "aprotic"
+    if solvent == "protic":
+        return ReactResponse(
+            status=ResultStatus.GAME_OVER,
+            message="💥 グリニャール試薬がプロトン性溶媒と反応して分解しました！",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_decomposition",
+            products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME, carbon_class="N/A", reaction_type="decomposition")],
+        )
+
+    # --- グリニャール + 酸素 (O=O) → アルコール ---
+    if r2 == "O=O":
+        # R-Mg-X + 1/2 O₂ → R-OH
+        product_smiles = r_group + "O"  # CO, CCO, etc.
+        c_count = n_c
+        base_name = CARBON_PREFIX.get(c_count, f"C{c_count}")
+        product_name = f"{base_name}オール (グリニャール酸化)"
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=f"✨ グリニャール試薬の酸化成功！\nR-Mg-X + O₂ → R-O-Mg-X → (加水分解) → R-OH\nアルコールが生成されました。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_oxidation",
+            products=[ProductInfo(smiles=product_smiles, name=product_name, carbon_class="primary", reaction_type="grignard_oxidation")],
+            byproducts=[f"Mg({grignard['halogen']})OH (マグネシウム塩)"],
+            condition_summary="R-Mg-X + O₂ → R-OH (酸化)",
+        )
+
+    # --- グリニャール + ホルムアルデヒド (C=O) → 1級アルコール (炭素鎖延長) ---
+    if r2 == "C=O":
+        # R-Mg-X + HCHO → R-CH₂-OH (after hydrolysis)
+        product_smiles = r_group + "CO"  # CCO, CCCO, etc.
+        c_count = n_c + 1
+        base_name = CARBON_PREFIX.get(c_count, f"C{c_count}")
+        product_name = f"{base_name}オール (求核付加)"
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=f"✨ 求核付加反応成功！\nR-Mg-X + HCHO → R-CH₂-OH\n炭素鎖が1つ延長されたアルコールが生成されました。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="grignard_nucleophilic_addition",
+            products=[ProductInfo(smiles=product_smiles, name=product_name, carbon_class="primary", reaction_type="nucleophilic_addition")],
+            byproducts=[f"Mg({grignard['halogen']})OH"],
+            condition_summary="R-Mg-X + HCHO → R-CH₂-OH (求核付加)",
+        )
+
+    # 未対応の求電子剤
+    return ReactResponse(
+        status=ResultStatus.NO_REACTION,
+        message=f"⚠️ グリニャール試薬と '{r2}' の反応はサポートされていません。",
+        reagent_1_smiles=req.reagent_1,
+        reagent_2_smiles=req.reagent_2,
+        reaction_type="grignard_reaction",
+    )
+
+
+# =====================================================================
+#  SECTION 9:  Phase 3 – 芳香族求電子置換 (EAS)
+# =====================================================================
+
+def _handle_eas_acylation(req: ReactRequest) -> ReactResponse:
+    """Phase 3: Friedel-Crafts アシル化 (ArH + RCOCl + AlCl₃ → ArCOR + HCl)"""
+    catalyst = getattr(req, 'catalyst_AlCl3', False)
+    if not catalyst:
+        return ReactResponse(
+            status=ResultStatus.NO_REACTION,
+            message="⚠️ Friedel-Crafts 反応には AlCl₃ 触媒が必要です！触媒を ON にしてください。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type="eas_acylation",
+        )
+
+    # ベンゼン + 塩化アセチル → アセトフェノン
+    ar = req.reagent_1 if "c1ccccc1" in req.reagent_1 else req.reagent_2
+    acyl = req.reagent_2 if req.reagent_2 != ar else req.reagent_1
+
+    if acyl == "CC(=O)Cl":
+        product_smiles = "CC(=O)c1ccccc1"
+        product_name = "アセトフェノン (Friedel-Crafts アシル化)"
+    else:
+        product_smiles = f"{acyl.replace('Cl', '')}c1ccccc1"
+        product_name = f"芳香族ケトン (EAS)"
+
+    return ReactResponse(
+        status=ResultStatus.SUCCESS,
+        message=(
+            f"✨ Friedel-Crafts アシル化成功！\n"
+            f"ArH + RCOCl + AlCl₃ → ArCOR + HCl\n"
+            f"芳香環にアシル基が導入されました。"
+        ),
+        reagent_1_smiles=req.reagent_1,
+        reagent_2_smiles=req.reagent_2,
+        reaction_type="eas_acylation",
+        products=[
+            ProductInfo(
+                smiles=product_smiles,
+                name=product_name,
+                carbon_class="aromatic",
+                reaction_type="eas_acylation",
+            )
+        ],
+        byproducts=["HCl (塩化水素)"],
+        condition_summary="ArH + RCOCl + AlCl₃ → ArCOR + HCl",
+    )
+
+
+# =====================================================================
+#  SECTION 10: Phase 4 – ナノプシャン組立
+# =====================================================================
+
+def _handle_nanoputian_assembly(req: ReactRequest) -> ReactResponse:
+    """Phase 4: ナノプシャン組立 (NANO_HEAD + NANO_BODY → NANOPUTIAN)"""
+    return ReactResponse(
+        status=ResultStatus.SUCCESS,
+        message=(
+            "🎉 ナノプシャン全合成達成！！！\n\n"
+            "君がパズルで組み上げてきたすべての反応 —\n"
+            "ラジカルハロゲン化、SN2置換、E2脱離、グリニャール試薬、求核付加、Friedel-Craftsアシル化 —\n"
+            "これらの知識を総動員して、ついにナノメートルサイズの人型分子が完成しました！\n\n"
+            "おめでとう！君は立派な有機化学者だ！"
+        ),
+        reagent_1_smiles=req.reagent_1,
+        reagent_2_smiles=req.reagent_2,
+        reaction_type="nanoputian_total_synthesis",
+        products=[
+            ProductInfo(
+                smiles="NANOPUTIAN",
+                name="🧬 ナノプシャン (NanoPutian)",
+                carbon_class="total_synthesis",
+                reaction_type="total_synthesis",
+            )
+        ],
+        condition_summary="NANO_HEAD + NANO_BODY → NANOPUTIAN (全合成)",
+    )
+
+
+# =====================================================================
+#  SECTION 11: Tier 2 – AI 推論フォールバック (Hugging Face Inference API)
 # =====================================================================
 
 # --- 設定 ---
@@ -1292,60 +1626,31 @@ async def _handle_tier2_ai_fallback(req: ReactRequest) -> ReactResponse:
 def _tier2_mock_response(req: ReactRequest) -> ReactResponse:
     """
     HF_TOKEN 未設定時のモック Tier 2 レスポンス。
-    開発・テスト時に使用する。
+    未知の反応 = 常にタール化 (ゲーム内で M11/M13 を確実にクリアさせるため)
     """
-    import hashlib
-
-    # 入力の組み合わせからダミー生成物を決定論的に生成
-    seed = hashlib.md5(
-        f"{req.reagent_1}:{req.reagent_2}".encode()
-    ).hexdigest()
-
-    # ダミー生成物テーブル (シードの先頭文字で選択)
-    mock_products_table = {
-        "0": ("C(=O)O", "🎲 酢酸 (Acetic Acid) [Mock]"),
-        "1": ("CCO", "🎲 エタノール [Mock]"),
-        "2": ("CC=O", "🎲 アセトアルデヒド [Mock]"),
-        "3": ("C1CCCCC1", "🎲 シクロヘキサン [Mock]"),
-        "4": ("CC(=O)C", "🎲 アセトン [Mock]"),
-        "5": ("C=CC", "🎲 プロペン [Mock]"),
-        "6": ("CCCC", "🎲 ブタン [Mock]"),
-        "7": ("CC(O)C", "🎲 2-プロパノール [Mock]"),
-        "8": ("ClC=C", "🎲 塩化ビニル [Mock]"),
-        "9": ("C#N", "🎲 シアン化水素 [Mock]"),
-        "a": ("CC(=O)O", "🎲 酢酸 [Mock]"),
-        "b": ("C1=CC=CC=C1O", "🎲 フェノール [Mock]"),
-        "c": ("CCOC", "🎲 ジエチルエーテル [Mock]"),
-        "d": ("C(Cl)(Cl)Cl", "🎲 クロロホルム [Mock]"),
-        "e": ("CC#C", "🎲 プロピン [Mock]"),
-        "f": (TAR_SMILES, TAR_NAME),
-    }
-
-    chosen = mock_products_table.get(seed[0], (TAR_SMILES, TAR_NAME))
-
     return ReactResponse(
         status=ResultStatus.SUCCESS,
         message=(
-            "🎲 Tier 2 モックモード (HF_TOKEN 未設定)\n"
-            "AI の代わりにダミー生成物を返しています。\n"
-            "本番で使用するには環境変数 HF_TOKEN を設定してください。"
+            "🏭 未知の反応条件のため、反応が暴走しタール化しました。\n"
+            "副反応が連鎖し、黒色の炭化物が沈殿しています…\n"
+            "（これもある意味、化学を学ぶ第一歩です！）"
         ),
         reagent_1_smiles=req.reagent_1,
         reagent_2_smiles=req.reagent_2,
-        reaction_type="tier2_mock",
+        reaction_type="carbonization",
         products=[
             ProductInfo(
-                smiles=chosen[0],
-                name=chosen[1],
-                carbon_class="mock",
-                reaction_type="mock_prediction",
+                smiles=TAR_SMILES,
+                name=TAR_NAME,
+                carbon_class="N/A",
+                reaction_type="carbonization",
             ),
         ],
-        byproducts=["❓ (モックのため副生成物は不明)"],
+        byproducts=["CO2 (二酸化炭素)", "H2O (水蒸気)", "煤 (Soot)"],
         tier="tier2_mock",
         ai_latency_seconds=0.0,
-        ai_model="mock (HF_TOKEN not set)",
-        condition_summary="Tier 1 未対応 → Tier 2 モック (HF_TOKEN 未設定)",
+        ai_model="mock (rule-based tar)",
+        condition_summary="未対応の反応 → タール化",
     )
 
 

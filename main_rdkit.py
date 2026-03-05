@@ -80,6 +80,12 @@ rxn_grignard.Initialize()
 rxn_eas = AllChem.ReactionFromSmarts("[c:1][H]>>[c:1]C(=O)C")
 rxn_eas.Initialize()
 
+# Phase 2.1: グリニャール試薬による炭素鎖延長 / 酸化
+rxn_grignard_carbonyl = AllChem.ReactionFromSmarts("[C:1]-[Mg]-[*:2].[C:3]=[O:4]>>[C:1]-[C:3]-[O:4]")
+rxn_grignard_carbonyl.Initialize()
+
+rxn_grignard_o2 = AllChem.ReactionFromSmarts("[C:1]-[Mg]-[*:2].[O:3]=[O:4]>>[C:1]-[O:3]")
+rxn_grignard_o2.Initialize()
 
 # ---------------------------------------------------------------------------
 # Tier 2: Hugging Face AI 設定
@@ -187,6 +193,26 @@ def execute_reaction(rxn: AllChem.ChemicalReaction, reactant_mol: Chem.Mol) -> l
                 continue
     return unique_products
 
+def execute_reaction_2(rxn: AllChem.ChemicalReaction, mol1: Chem.Mol, mol2: Chem.Mol) -> list[str]:
+    """2つの基質を用いた反応処理"""
+    mol_h1 = Chem.AddHs(mol1)
+    mol_h2 = Chem.AddHs(mol2)
+    product_sets = rxn.RunReactants((mol_h1, mol_h2))
+    
+    seen = set()
+    unique_products = []
+    for products in product_sets:
+        for p in products:
+            try:
+                Chem.SanitizeMol(p)
+                p_no_h = Chem.RemoveHs(p)
+                smi = Chem.MolToSmiles(p_no_h)
+                if smi not in seen:
+                    seen.add(smi)
+                    unique_products.append(smi)
+            except Exception:
+                continue
+    return unique_products
 
 # ---------------------------------------------------------------------------
 # ヘルパー関数: Tier 2 実行
@@ -356,6 +382,28 @@ async def react(req: ReactRequest):
             reaction_type_str = "Grignard Reagent Formation"
             products_smiles = execute_reaction(rxn_grignard, reagent1_mol)
 
+    # Phase 2.1: 炭素鎖の延長 (アルコール等の生成)
+    elif "[Mg]" in req.reagent_1 and req.reagent_2 in ["C=O", "O=O"]:
+        if solvent != "aprotic":
+            return ReactResponse(
+                status=ResultStatus.GAME_OVER,
+                message="水などのプロトン性溶媒によりグリニャール試薬が完全に失活した…",
+                reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
+                reaction_type="Grignard Extension Failure", products=[],
+                tier="tier1_rule",
+                image_base64=None
+            )
+        else:
+            tier1_handled = True
+            reaction_type_str = "Grignard Chain Extension"
+            reagent2_mol = Chem.MolFromSmiles(req.reagent_2)
+            if req.reagent_2 == "C=O":
+                products_smiles = execute_reaction_2(rxn_grignard_carbonyl, reagent1_mol, reagent2_mol)
+            else:
+                products_smiles = execute_reaction_2(rxn_grignard_o2, reagent1_mol, reagent2_mol)
+            # RDKit上は酸素がアニオン化するため、Hをつけてアルコール(-OH)にする簡易補正
+            products_smiles = [s.replace("[O-]", "O") for s in products_smiles]
+
     # Phase 3: 芳香族求電子置換反応 (Friedel-Crafts アシル化)
     elif req.reagent_1 == "c1ccccc1" and req.reagent_2 == "CC(=O)Cl":
         if solvent != "aprotic":
@@ -405,6 +453,9 @@ async def react(req: ReactRequest):
         elif reaction_type_str == "Grignard Reagent Formation":
             rarity = "SR"
             flavor_text = "強力な求核剤、グリニャール試薬が完成した。これで炭素骨格を拡張できる。"
+        elif reaction_type_str == "Grignard Chain Extension":
+            rarity = "SSR"
+            flavor_text = "炭素鎖の延長に成功した。これでより大きな骨格を作ることができる。"
         elif temp >= 80 and reaction_type_str == "E2 Elimination":
             rarity = "SR"
             flavor_text = "高温環境下での過激な脱離反応により生成。フラスコが少し焦げた。"
