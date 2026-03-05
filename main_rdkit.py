@@ -67,10 +67,10 @@ def get_radical_halogenation_rxn(halogen: str) -> AllChem.ChemicalReaction:
     rxn.Initialize()
     return rxn
 
-rxn_sn2 = AllChem.ReactionFromSmarts("[C:1]-[Cl,Br,I;X0]>>[C:1]-O")
+rxn_sn2 = AllChem.ReactionFromSmarts("[C:1]-[Cl,Br,I]>>[C:1]-O")
 rxn_sn2.Initialize()
 
-rxn_e2 = AllChem.ReactionFromSmarts("[H][C:1]-[C:2]-[Cl,Br,I;X0]>>[C:1]=[C:2]")
+rxn_e2 = AllChem.ReactionFromSmarts("[H][C:1]-[C:2]-[Cl,Br,I]>>[C:1]=[C:2]")
 rxn_e2.Initialize()
 
 rxn_grignard = AllChem.ReactionFromSmarts("[C:1]-[Cl,Br,I:2]>>[C:1]-[Mg]-[*:2]")
@@ -434,13 +434,14 @@ async def react(req: ReactRequest):
 
     if tier1_handled:
         if not products_smiles:
+            # RDKitの条件に合わない無茶な組み合わせは、副反応が暴走しタール化したものとする
             return ReactResponse(
-                status=ResultStatus.NO_REACTION,
-                message="条件は合致しましたが、構造的に反応が進行しませんでした。",
+                status=ResultStatus.GAME_OVER,
+                message="反応条件に合わない無茶な組み合わせです。副反応が暴走しタールになりました。",
                 reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
-                reaction_type=reaction_type_str, products=[],
-                tier="tier1_rule",
-                image_base64=None
+                reaction_type="Tar Formation", products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME)],
+                tier="tier1_fallback",
+                image_base64=generate_image_base64(TAR_SMILES)
             )
             
         img_b64 = generate_image_base64(products_smiles[0])
