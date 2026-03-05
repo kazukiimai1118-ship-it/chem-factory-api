@@ -680,6 +680,31 @@ def detect_reaction_type(
         if haloalkane is not None:
             return "substitution_elimination"
 
+    # === インディゴルート反応 ===
+    # ニトロ化: ベンゼン + HNO3 (H2SO4触媒) → ニトロベンゼン
+    if reagent_2 == "HNO3" and (reagent_1 in ("c1ccccc1", "C1=CC=CC=C1")):
+        return "nitration"
+    
+    # 還元: ニトロベンゼン + Sn/HCl → アニリン
+    if reagent_1 == "NITROBENZENE" and reagent_2 == "Sn_HCl":
+        return "reduction_nitro"
+    
+    # Vilsmeier-Haack: アニリン + DMF (POCl3触媒) → 2-アミノベンズアルデヒド
+    if reagent_1 == "ANILINE" and reagent_2 == "DMF":
+        return "vilsmeier_haack"
+    
+    # ジアゾ化: 2-アミノベンズアルデヒド + NaNO2 → 2-ニトロベンズアルデヒド
+    if reagent_1 == "2_AMINOBENZALDEHYDE" and reagent_2 == "NaNO2":
+        return "diazotization"
+    
+    # アルドール縮合: 2-ニトロベンズアルデヒド + アセトン → インドキシル前駆体
+    if reagent_1 == "2_NITROBENZALDEHYDE" and reagent_2 == "ACETONE":
+        return "aldol_condensation"
+    
+    # 酸化二量化: インドキシル + 空気 → インディゴ
+    if reagent_1 == "INDOXYL" and reagent_2 == "AIR_O2":
+        return "oxidative_dimerization"
+
     return "unknown"
 
 
@@ -826,7 +851,11 @@ def canonicalize_smiles(smiles: str) -> str:
     # 特殊トークンはそのまま返す
     special_tokens = {"NANO_HEAD", "NANO_BODY", "NANOPUTIAN", "HEAT", "SOLVENT",
                       "MYSTERY", "ALL", "AlCl3", "Mg", "O=O", "C=O", "HCl",
-                      "HBr", "ClCl", "BrBr"}
+                      "HBr", "ClCl", "BrBr",
+                      # インディゴルート
+                      "HNO3", "NITROBENZENE", "Sn_HCl", "ANILINE", "DMF",
+                      "2_AMINOBENZALDEHYDE", "NaNO2", "2_NITROBENZALDEHYDE",
+                      "ACETONE", "INDOXYL", "AIR_O2", "INDIGO", "DYE_MASTER"}
     if smiles in special_tokens:
         return smiles
 
@@ -930,6 +959,13 @@ async def react(req: ReactRequest):
     # ==================================================================
     if rxn_type == "nanoputian_assembly":
         return _handle_nanoputian_assembly(req)
+
+    # ==================================================================
+    # Phase 5: インディゴルート反応 (トークンベース)
+    # ==================================================================
+    if rxn_type in ("nitration", "reduction_nitro", "vilsmeier_haack",
+                     "diazotization", "aldol_condensation", "oxidative_dimerization"):
+        return _handle_indigo_reactions(req, rxn_type)
 
     # ==================================================================
     # Tier 1 で未定義 → Tier 2 AI 推論フォールバック
@@ -1451,6 +1487,134 @@ def _handle_nanoputian_assembly(req: ReactRequest) -> ReactResponse:
             )
         ],
         condition_summary="NANO_HEAD + NANO_BODY → NANOPUTIAN (全合成)",
+    )
+
+
+# =====================================================================
+#  SECTION 10b: Phase 5 – インディゴルート反応 (トークンベース)
+# =====================================================================
+
+# インディゴルート反応の定義マップ
+INDIGO_REACTIONS: dict[str, dict] = {
+    "nitration": {
+        "product": "NITROBENZENE",
+        "product_name": "ニトロベンゼン (Nitrobenzene)",
+        "byproducts": ["H2O"],
+        "message": (
+            "⚡ ニトロ化成功！\n\n"
+            "硫酸 (H₂SO₄) が触媒として NO₂⁺ イオンを生成し、\n"
+            "ベンゼン環の π 電子がこれを攻撃する。\n"
+            "これが「芳香族求電子置換反応 (EAS)」のニトロ化だ！\n\n"
+            "🧪 生成物: ニトロベンゼン (淡黄色の液体、アーモンドの匂い)"
+        ),
+        "condition": "c1ccccc1 + HNO3 → C₆H₅NO₂ + H₂O (EAS ニトロ化)",
+    },
+    "reduction_nitro": {
+        "product": "ANILINE",
+        "product_name": "アニリン (Aniline)",
+        "byproducts": ["SnCl2", "H2O"],
+        "message": (
+            "🔄 還元成功！\n\n"
+            "スズ (Sn) と塩酸 (HCl) がニトロ基 (-NO₂) を\n"
+            "アミノ基 (-NH₂) に変換した。\n"
+            "これは Béchamp 還元として知られる古典的な方法だ。\n\n"
+            "🧪 生成物: アニリン (アミン特有の匂いを持つ液体)\n"
+            "💡 ヒント: アミノ基は高い求核性と電子供与性を持つ重要な官能基"
+        ),
+        "condition": "C₆H₅NO₂ + Sn/HCl → C₆H₅NH₂ (Béchamp 還元)",
+    },
+    "vilsmeier_haack": {
+        "product": "2_AMINOBENZALDEHYDE",
+        "product_name": "2-アミノベンズアルデヒド (2-Aminobenzaldehyde)",
+        "byproducts": ["POCl3_waste"],
+        "message": (
+            "✨ Vilsmeier-Haack 反応成功！\n\n"
+            "DMF (ジメチルホルムアミド) と POCl₃ から\n"
+            "反応性の高い「Vilsmeier 試薬」が生成され、\n"
+            "アニリンのオルト位にアルデヒド基 (-CHO) を導入した。\n\n"
+            "🧪 生成物: 2-アミノベンズアルデヒド\n"
+            "💡 ヒント: -NH₂ 基がオルト/パラ位に電子を供与するため、\n"
+            "    オルト位が選択的にホルミル化される"
+        ),
+        "condition": "C₆H₅NH₂ + DMF/POCl₃ → 2-NH₂-C₆H₄-CHO (Vilsmeier-Haack)",
+    },
+    "diazotization": {
+        "product": "2_NITROBENZALDEHYDE",
+        "product_name": "2-ニトロベンズアルデヒド (2-Nitrobenzaldehyde)",
+        "byproducts": ["N2", "H2O"],
+        "message": (
+            "🌀 ジアゾ化 → Sandmeyer 型変換成功！\n\n"
+            "亜硝酸ナトリウム (NaNO₂) でアミノ基をジアゾニウム塩に変換し、\n"
+            "さらにニトロ基 (-NO₂) に変換した。\n"
+            "ジアゾ化は窒素ガス (N₂) の放出を駆動力とする反応だ。\n\n"
+            "🧪 生成物: 2-ニトロベンズアルデヒド (Baeyer-Drewson 法の基質)\n"
+            "💡 これがインディゴ合成の核心的な出発原料！"
+        ),
+        "condition": "2-NH₂-C₆H₄-CHO + NaNO₂ → 2-NO₂-C₆H₄-CHO + N₂ (ジアゾ化 + Sandmeyer)",
+    },
+    "aldol_condensation": {
+        "product": "INDOXYL",
+        "product_name": "インドキシル (Indoxyl)",
+        "byproducts": ["H2O", "NaOH"],
+        "message": (
+            "🔮 Baeyer-Drewson 反応成功！\n\n"
+            "2-ニトロベンズアルデヒドとアセトンが\n"
+            "NaOH の塩基条件下でアルドール縮合を起こし、\n"
+            "同時にニトロ基の還元と環化が進行して\n"
+            "複素環「インドール骨格」が一気に構築された！\n\n"
+            "🧪 生成物: インドキシル (3-ヒドロキシインドール)\n"
+            "💡 これが酸化されるとインディゴになる最後の中間体"
+        ),
+        "condition": "2-NO₂-C₆H₄-CHO + CH₃COCH₃ + NaOH → Indoxyl (Baeyer-Drewson)",
+    },
+    "oxidative_dimerization": {
+        "product": "INDIGO",
+        "product_name": "🔵 インディゴ (Indigo)",
+        "byproducts": ["H2O"],
+        "message": (
+            "🎉🔵 インディゴ合成達成！！！\n\n"
+            "インドキシルが空気中の酸素 (O₂) で酸化され、\n"
+            "2分子が C=C 二重結合で連結して「インディゴ」が完成！\n\n"
+            "✨ 巨大な共役系 (交互に並ぶ単結合と二重結合) が\n"
+            "   可視光の赤色成分を吸収し、美しい藍色を発色する。\n\n"
+            "🧪 この染料は5000年以上の歴史を持ち、\n"
+            "   ジーンズの「デニムブルー」の正体はインディゴ染料だ！\n\n"
+            "おめでとう！君はインディゴの全合成に成功した！"
+        ),
+        "condition": "2 × Indoxyl + O₂ → Indigo + H₂O (酸化二量化)",
+    },
+}
+
+
+def _handle_indigo_reactions(req: ReactRequest, rxn_type: str) -> ReactResponse:
+    """Phase 5: インディゴルート反応 (トークンベースの特殊反応)"""
+    rxn_info = INDIGO_REACTIONS.get(rxn_type)
+    if rxn_info is None:
+        return ReactResponse(
+            status=ResultStatus.NO_REACTION,
+            message="❌ 未定義のインディゴルート反応です。",
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type=rxn_type,
+        )
+
+    return ReactResponse(
+        status=ResultStatus.SUCCESS,
+        message=rxn_info["message"],
+        reagent_1_smiles=req.reagent_1,
+        reagent_2_smiles=req.reagent_2,
+        reaction_type=rxn_type,
+        products=[
+            ProductInfo(
+                smiles=rxn_info["product"],
+                name=rxn_info["product_name"],
+                carbon_class="indigo_route",
+                reaction_type=rxn_type,
+            )
+        ],
+        byproducts=rxn_info.get("byproducts", []),
+        condition_summary=rxn_info["condition"],
+        tier="tier1_rule",
     )
 
 
