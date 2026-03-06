@@ -113,7 +113,7 @@ class ReactRequest(BaseModel):
     condition_light: bool = Field(..., examples=[True])
     temperature: Optional[int] = Field(None, ge=0, le=100)
     solvent_type: Optional[str] = Field(None, examples=["protic", "aprotic"])
-    catalyst_AlCl3: Optional[bool] = Field(False, description="塩化アルミニウム触媒の有無")
+    catalyst: Optional[str] = Field(None, description="追加の触媒指定")
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"
@@ -323,6 +323,45 @@ async def root():
 
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
+    # ==================================================================
+    # カスタム触媒レシピ (新機能)
+    # ==================================================================
+    r1, r2 = req.reagent_1, req.reagent_2
+    cat = req.catalyst or ""
+    reagents = {r1, r2}
+    
+    custom_res = None
+    if reagents == {"C", "C"} and cat.startswith("Pt"):
+        custom_res = (["C#C"], ["H2"], "✨ メタンの脱水素カップリングによりアセチレンを合成しました！", "catalytic_coupling", "アセチレン", "N/A")
+    elif reagents == {"C#C", "C#C"} and cat.startswith("Fe"):
+        custom_res = (["c1ccccc1"], [], "✨ アセチレンの三量化環化によりベンゼン環が生成されました！", "cyclotrimerization", "ベンゼン", "N/A")
+    elif reagents == {"NITROBENZENE", "HCl"} and cat.startswith("Sn"):
+        custom_res = (["ANILINE"], ["H2O"], "✨ 塩化水素とスズを利用した還元反応によりアニリンが合成されました！", "reduction_nitro", "アニリン", "N/A")
+    elif reagents == {"CC", "HCl"}:
+        custom_res = (["CCCl"], [], "✨ エタンと塩化水素からクロロエタンを合成しました！", "hydrohalogenation", "クロロエタン", "primary")
+    elif reagents == {"CC(O)C", "O=O"} and cat.startswith("Pd"):
+        custom_res = (["CC(=O)C"], ["H2O"], "✨ 2-プロパノールの触媒的酸化によりアセトンが合成されました！", "oxidation", "アセトン", "secondary")
+    elif (reagents == {"C", "N"} or reagents == {"C", "[NH3]"}):
+        custom_res = (["CNC"], [], "✨ メタンとアンモニアからジメチルアミンを合成しました！", "amination", "ジメチルアミン", "secondary")
+    elif reagents == {"CNC", "O=CO"} and cat.startswith("Acid"):
+        custom_res = (["O=CN(C)C"], ["H2O"], "✨ 酸触媒を用いたアミド化反応によりDMF（ジメチルホルムアミド）が生成されました！", "amidation", "DMF", "N/A")
+
+    if custom_res:
+        prs_smi, byprs, msg, rxn_type, pname, pclass = custom_res
+        prs = [ProductInfo(smiles=s, name=pname, carbon_class=pclass, reaction_type=rxn_type) for s in prs_smi]
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=msg,
+            reagent_1_smiles=r1,
+            reagent_2_smiles=r2,
+            reaction_type=rxn_type,
+            products=prs,
+            byproducts=byprs,
+            condition_summary=f"Catalyst: {cat}" if cat else "No specific catalyst",
+            tier="tier1_rule",
+            image_base64=generate_image_base64(prs_smi[0]) if prs_smi else None
+        )
+
     reagent1_mol = Chem.MolFromSmiles(req.reagent_1)
     if reagent1_mol is None:
         return ReactResponse(
@@ -415,7 +454,7 @@ async def react(req: ReactRequest):
                 tier="tier1_rule",
                 image_base64=None
             )
-        elif not req.catalyst_AlCl3:
+        elif req.catalyst != "AlCl3":
             return ReactResponse(
                 status=ResultStatus.NO_REACTION,
                 message="ベンゼン環は安定なため、強力なルイス酸触媒がないと反応しません。",

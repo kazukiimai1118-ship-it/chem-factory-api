@@ -780,9 +780,9 @@ class ReactRequest(BaseModel):
         description="溶媒タイプ: 'protic' (プロトン性) or 'aprotic' (非プロトン性)。Phase 1 で使用。",
     )
     # --- Phase 2/3 追加パラメータ ---
-    catalyst_AlCl3: bool = Field(
-        False,
-        description="AlCl₃ 触媒の有無 (Phase 3 EAS 用)",
+    catalyst: Optional[str] = Field(
+        None,
+        description="追加の触媒指定 (Sn, Fe, Pt/Heat, Pd/Cu, Acid 等)",
     )
 
 
@@ -917,6 +917,44 @@ async def react(req: ReactRequest):
       - temperature: 0-100 (60 以上 → E2 優先, 60 未満 → SN2 候補)
       - solvent_type: "protic" or "aprotic" (aprotic + 低温 → SN2)
     """
+    # ==================================================================
+    # カスタム触媒レシピ (新機能)
+    # ==================================================================
+    import copy
+    r1, r2 = req.reagent_1, req.reagent_2
+    cat = req.catalyst or ""
+    reagents = {r1, r2}
+    
+    custom_res = None
+    if reagents == {"C", "C"} and cat.startswith("Pt"):
+        custom_res = (["C#C"], ["H2"], "✨ メタンの脱水素カップリングによりアセチレンを合成しました！", "catalytic_coupling", "アセチレン", "N/A")
+    elif reagents == {"C#C", "C#C"} and cat.startswith("Fe"):
+        custom_res = (["c1ccccc1"], [], "✨ アセチレンの三量化環化によりベンゼン環が生成されました！", "cyclotrimerization", "ベンゼン", "N/A")
+    elif reagents == {"NITROBENZENE", "HCl"} and cat.startswith("Sn"):
+        custom_res = (["ANILINE"], ["H2O"], "✨ 塩化水素とスズを利用した還元反応によりアニリンが合成されました！", "reduction_nitro", "アニリン", "N/A")
+    elif reagents == {"CC", "HCl"}:
+        custom_res = (["CCCl"], [], "✨ エタンと塩化水素からクロロエタンを合成しました！", "hydrohalogenation", "クロロエタン", "primary")
+    elif reagents == {"CC(O)C", "O=O"} and cat.startswith("Pd"):
+        custom_res = (["CC(=O)C"], ["H2O"], "✨ 2-プロパノールの触媒的酸化によりアセトンが合成されました！", "oxidation", "アセトン", "secondary")
+    elif (reagents == {"C", "N"} or reagents == {"C", "[NH3]"}):
+        custom_res = (["CNC"], [], "✨ メタンとアンモニアからジメチルアミンを合成しました！", "amination", "ジメチルアミン", "secondary")
+    elif reagents == {"CNC", "O=CO"} and cat.startswith("Acid"):
+        custom_res = (["O=CN(C)C"], ["H2O"], "✨ 酸触媒を用いたアミド化反応によりDMF（ジメチルホルムアミド）が生成されました！", "amidation", "DMF", "N/A")
+
+    if custom_res:
+        prs_smi, byprs, msg, rxn_type, pname, pclass = custom_res
+        prs = [ProductInfo(smiles=s, name=pname, carbon_class=pclass, reaction_type=rxn_type) for s in prs_smi]
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=msg,
+            reagent_1_smiles=r1,
+            reagent_2_smiles=r2,
+            reaction_type=rxn_type,
+            products=prs,
+            byproducts=byprs,
+            condition_summary=f"Catalyst: {cat}" if cat else "No specific catalyst",
+            tier="tier1_rule"
+        )
 
     # ==================================================================
     # 反応タイプの自動判定
@@ -924,7 +962,7 @@ async def react(req: ReactRequest):
     rxn_type = detect_reaction_type(
         req.reagent_1, req.reagent_2,
         req.condition_light, req.temperature, req.solvent_type,
-        getattr(req, 'catalyst_AlCl3', False),
+        req.catalyst == "AlCl3" if req.catalyst else False,
     )
 
     # ==================================================================
