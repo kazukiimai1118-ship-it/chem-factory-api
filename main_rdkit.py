@@ -105,6 +105,75 @@ TAR_NAME = "🏭 タール / 炭化物"
 
 
 # ---------------------------------------------------------------------------
+# Open World Reaction Registry
+# ---------------------------------------------------------------------------
+def _canon(s: str) -> str:
+    try:
+        m = Chem.MolFromSmiles(s)
+        return Chem.MolToSmiles(m) if m else s
+    except:
+        return s
+
+def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, str]:
+    c1 = _canon(r1)
+    c2 = _canon(r2)
+    sorted_r = sorted([c1, c2])
+    cat = catalyst if catalyst else "None"
+    return (sorted_r[0], sorted_r[1], cat)
+
+OPEN_WORLD_REACTIONS = {
+    # --------------------------------------------------------
+    # Tier 1: アスピリンルート
+    # --------------------------------------------------------
+    get_reaction_key("c1ccccc1O", "O=C=O", "NaOH"): {
+        "product": "O=C(O)c1ccccc1O",
+        "product_name": "サリチル酸",
+        "message": "✨ コルベ・シュミット反応成功！フェノールからサリチル酸を合成した。",
+        "byproducts": [],
+        "reaction_type": "kolbe_schmitt"
+    },
+    get_reaction_key("O=C(O)c1ccccc1O", "CC(=O)OC(C)=O", "H2SO4"): {
+        "product": "CC(=O)Oc1ccccc1C(=O)O",
+        "product_name": "💊 アスピリン",
+        "message": "✨ エステル化成功！世界初の人工合成医薬品「アスピリン」が完成した！",
+        "byproducts": ["CC(=O)O"], # 酢酸
+        "reaction_type": "esterification"
+    },
+    # --------------------------------------------------------
+    # Tier 1: パラセタモールルート
+    # --------------------------------------------------------
+    get_reaction_key("c1ccccc1O", "HNO3", "Acid"): {
+        "product": "O=[N+]([O-])c1ccc(O)cc1",
+        "product_name": "p-ニトロフェノール",
+        "message": "✨ ニトロ化成功！フェノールからp-ニトロフェノールを合成した。",
+        "byproducts": ["H2O"],
+        "reaction_type": "nitration"
+    },
+    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Pd/C"): {
+        "product": "Nc1ccc(O)cc1",
+        "product_name": "p-アミノフェノール",
+        "message": "✨ 接触還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
+        "byproducts": ["H2O", "H2O"],
+        "reaction_type": "reduction"
+    },
+    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Sn(スズ)"): {
+        "product": "Nc1ccc(O)cc1",
+        "product_name": "p-アミノフェノール",
+        "message": "✨ スズ還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
+        "byproducts": ["H2O", "H2O"],
+        "reaction_type": "reduction"
+    },
+    get_reaction_key("Nc1ccc(O)cc1", "CC(=O)OC(C)=O", "None"): {
+        "product": "CC(=O)Nc1ccc(O)cc1",
+        "product_name": "💊 パラセタモール",
+        "message": "✨ アミド化成功！解熱鎮痛薬「パラセタモール」が完成した！",
+        "byproducts": ["CC(=O)O"], # 酢酸
+        "reaction_type": "amidation"
+    }
+}
+
+
+# ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
 class ReactRequest(BaseModel):
@@ -544,6 +613,29 @@ async def react(req: ReactRequest):
             quiz_correct_index=quiz_correct_index
         )
         
+        
+    # ----------------------------------------------------------------------
+    # Tier 1.5 Open World Reaction Registry 判定
+    # ----------------------------------------------------------------------
+    registry_key = get_reaction_key(req.reagent_1, req.reagent_2, req.catalyst)
+    if registry_key in OPEN_WORLD_REACTIONS:
+        recipe = OPEN_WORLD_REACTIONS[registry_key]
+        img_b64 = generate_image_base64(recipe["product"])
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=recipe["message"],
+            reagent_1_smiles=req.reagent_1,
+            reagent_2_smiles=req.reagent_2,
+            reaction_type=recipe.get("reaction_type", "open_world_recipe"),
+            products=[ProductInfo(smiles=recipe["product"], name=recipe["product_name"])],
+            byproducts=recipe.get("byproducts", []),
+            condition_summary=f"Catalyst: {req.catalyst or 'None'}",
+            tier="tier1_registry",
+            image_base64=img_b64,
+            rarity="SSR" if "💊" in recipe["product_name"] else "SR",
+            flavor_text=recipe.get("message", "")
+        )
+
     # ----------------------------------------------------------------------
     # Tier 2 AI推論フォールバック
     # ----------------------------------------------------------------------

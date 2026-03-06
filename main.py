@@ -900,6 +900,66 @@ async def root():
     }
 
 
+# ---------------------------------------------------------------------------
+# Open World Reaction Registry (Tier 1.5)
+# ---------------------------------------------------------------------------
+def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, str]:
+    sorted_r = sorted([r1, r2])
+    cat = catalyst if catalyst else "None"
+    return (sorted_r[0], sorted_r[1], cat)
+
+OPEN_WORLD_REACTIONS = {
+    # --------------------------------------------------------
+    # Tier 1: アスピリンルート
+    # --------------------------------------------------------
+    get_reaction_key("Oc1ccccc1", "O=C=O", "NaOH"): {
+        "product": "OC1=CC=CC=C1C(=O)O",
+        "product_name": "サリチル酸",
+        "message": "✨ コルベ・シュミット反応成功！フェノールからサリチル酸を合成した。",
+        "byproducts": [],
+        "reaction_type": "kolbe_schmitt"
+    },
+    get_reaction_key("OC1=CC=CC=C1C(=O)O", "CC(=O)OC(C)=O", "H2SO4"): {
+        "product": "CC(=O)Oc1ccccc1C(=O)O",
+        "product_name": "💊 アスピリン",
+        "message": "✨ エステル化成功！世界初の人工合成医薬品「アスピリン」が完成した！",
+        "byproducts": ["CC(=O)O"], # 酢酸
+        "reaction_type": "esterification"
+    },
+    # --------------------------------------------------------
+    # Tier 1: パラセタモールルート
+    # --------------------------------------------------------
+    get_reaction_key("Oc1ccccc1", "HNO3", "Acid (酸)"): {
+        "product": "O=[N+]([O-])c1ccc(O)cc1",
+        "product_name": "p-ニトロフェノール",
+        "message": "✨ ニトロ化成功！フェノールからp-ニトロフェノールを合成した。",
+        "byproducts": ["H2O"],
+        "reaction_type": "nitration"
+    },
+    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Pd/C"): {
+        "product": "Nc1ccc(O)cc1",
+        "product_name": "p-アミノフェノール",
+        "message": "✨ 接触還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
+        "byproducts": ["H2O", "H2O"],
+        "reaction_type": "reduction"
+    },
+    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Sn (スズ)"): {
+        "product": "Nc1ccc(O)cc1",
+        "product_name": "p-アミノフェノール",
+        "message": "✨ スズ還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
+        "byproducts": ["H2O", "H2O"],
+        "reaction_type": "reduction"
+    },
+    get_reaction_key("Nc1ccc(O)cc1", "CC(=O)OC(C)=O", "None"): {
+        "product": "CC(=O)Nc1ccc(O)cc1",
+        "product_name": "💊 パラセタモール",
+        "message": "✨ アミド化成功！解熱鎮痛薬「パラセタモール」が完成した！",
+        "byproducts": ["CC(=O)O"], # 酢酸
+        "reaction_type": "amidation"
+    }
+}
+
+
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
     """
@@ -954,6 +1014,39 @@ async def react(req: ReactRequest):
             byproducts=byprs,
             condition_summary=f"Catalyst: {cat}" if cat else "No specific catalyst",
             tier="tier1_rule"
+        )
+
+    # ==================================================================
+    # Open World Reaction Registry (Tier 1.5)
+    # ==================================================================
+    target_registry_key = get_reaction_key(r1, r2, cat)
+    recipe = OPEN_WORLD_REACTIONS.get(target_registry_key)
+    
+    # 触媒の表記ゆれ吸収 (Acid や Sn の部分一致等)
+    if not recipe:
+        sorted_r = sorted([r1, r2])
+        for (k1, k2, kcat), v in OPEN_WORLD_REACTIONS.items():
+            if k1 == sorted_r[0] and k2 == sorted_r[1]:
+                # 触媒がNone指定なら、リクエストもNoneでなければならない
+                if kcat == "None" and (not cat or cat == "None"):
+                    recipe = v; break
+                # 触媒が指定されている場合、部分一致を許容する
+                elif kcat != "None" and cat and (kcat in cat or cat in kcat or cat.startswith(kcat.split('(')[0].strip())):
+                    recipe = v; break
+
+    if recipe:
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message=recipe["message"],
+            reagent_1_smiles=r1,
+            reagent_2_smiles=r2,
+            reaction_type=recipe.get("reaction_type", "open_world_recipe"),
+            products=[ProductInfo(smiles=recipe["product"], name=recipe["product_name"])],
+            byproducts=recipe.get("byproducts", []),
+            condition_summary=f"Catalyst: {cat or 'None'}",
+            tier="tier1_registry",
+            rarity="SSR" if "💊" in recipe["product_name"] else "SR",
+            flavor_text=recipe.get("message", "")
         )
 
     # ==================================================================
