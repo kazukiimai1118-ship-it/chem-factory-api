@@ -301,6 +301,8 @@ OPEN_WORLD_REACTIONS = {
         "byproducts": [],
         "reaction_type": "photochemical_cycloaddition"
     },
+    # 👇 ここに get_reaction_key を追加します
+    get_reaction_key("O=C1C2C3C4C1C5C2C3C45", "NaOH", "Heat"): {
         "product": "C12C3C4C1C5C2C3C45",
         "product_name": "🧊 キュバン",
         "message": "✨ Favorskii転位と脱炭酸が完了！プラトンの立体、究極のひずみ分子「キュバン」が完成した！",
