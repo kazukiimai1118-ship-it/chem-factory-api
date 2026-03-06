@@ -1119,6 +1119,85 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ 究極のクロスカップリングが完了！！分子サイズの小人「ナノプシャン」が誕生した！",
         "byproducts": ["HI"],
         "reaction_type": "sonogashira_coupling"
+    },
+    # --------------------------------------------------------
+    # 保護・脱保護ルート (p-ニトロアニリン)
+    # --------------------------------------------------------
+    get_reaction_key("Nc1ccccc1", "CC(=O)OC(C)=O", "None"): {
+        "product": "CC(=O)Nc1ccccc1",
+        "product_name": "アセトアニリド",
+        "message": "✨ 保護成功！アミンをアセチル基でガードし、官能基の反応性を制御可能にした。",
+        "byproducts": ["CC(=O)O"],
+        "reaction_type": "protection_amine"
+    },
+    get_reaction_key("CC(=O)Nc1ccccc1", "HNO3", "Acid"): {
+        "product": "CC(=O)Nc1ccc([N+](=O)[O-])cc1",
+        "product_name": "p-ニトロアセトアニリド",
+        "message": "✨ ニトロ化成功！保護基のおかげでアミノ基の酸化を防ぎ、パラ位にニトロ基が導入された。",
+        "byproducts": ["H2O"],
+        "reaction_type": "nitration"
+    },
+    get_reaction_key("CC(=O)Nc1ccc([N+](=O)[O-])cc1", "O", "Acid"): {
+        "product": "Nc1ccc([N+](=O)[O-])cc1",
+        "product_name": "p-ニトロアニリン",
+        "message": "🔓 脱保護成功！！アミドを加水分解し、保護されていたアミンが復活した。鮮やかな黄色のp-ニトロアニリンが完成！",
+        "byproducts": ["CC(=O)O"],
+        "reaction_type": "deprotection_amine"
+    },
+    # --------------------------------------------------------
+    # 保護・脱保護ルート (ケトン保護)
+    # --------------------------------------------------------
+    get_reaction_key("CC(=O)c1ccc(C(=O)O)cc1", "OCCO", "Acid"): {
+        "product": "O=C(O)c1ccc(C2(C)OCCO2)cc1",
+        "product_name": "アセタール保護カルボン酸",
+        "message": "✨ 保護成功！ケトンを環状アセタールとしてガード。これでLiAlH4の攻撃から身を守れるぞ！",
+        "byproducts": ["H2O"],
+        "reaction_type": "protection_ketone"
+    },
+    get_reaction_key("O=C(O)c1ccc(C2(C)OCCO2)cc1", "LiAlH4", "None"): {
+        "product": "OCCc1ccc(C2(C)OCCO2)cc1",
+        "product_name": "アセタール保護アルコール",
+        "message": "✨ 還元成功！ケトンは無傷のまま、カルボキシ基だけが選択的にアルコールへ還元された。",
+        "byproducts": [],
+        "reaction_type": "reduction"
+    },
+    get_reaction_key("OCCc1ccc(C2(C)OCCO2)cc1", "O", "Acid"): {
+        "product": "CC(=O)c1ccc(CO)cc1",
+        "product_name": "4-アセチルベンジルアルコール",
+        "message": "🔓 脱保護成功！！酸による加水分解でアセタールが外れ、ケトンが鮮やかに再出現した！多官能基分子の選択的合成に勝利！",
+        "byproducts": ["OCCO"],
+        "reaction_type": "deprotection_ketone"
+    },
+    # --------------------------------------------------------
+    # 保護・脱保護ルート (アルコール保護/TMS)
+    # --------------------------------------------------------
+    get_reaction_key("Oc1ccc(Br)cc1", "C[Si](C)(C)Cl", "Base"): {
+        "product": "C[Si](C)(C)Oc1ccc(Br)cc1",
+        "product_name": "TMS保護ブロモベンゼン",
+        "message": "✨ 保護成功！TMS基がフェノール性OHをガード。これでMgによるグリニャール化が可能になった！",
+        "byproducts": ["HCl"],
+        "reaction_type": "protection_alcohol"
+    },
+    get_reaction_key("C[Si](C)(C)Oc1ccc(Br)cc1", "Mg", "None"): {
+        "product": "C[Si](C)(C)Oc1ccc([Mg]Br)cc1",
+        "product_name": "TMS保護グリニャール",
+        "message": "✨ グリニャール試薬調製完了。保護されたフェノールが強力な求核剤として牙を剥く！",
+        "byproducts": [],
+        "reaction_type": "grignard_preparation"
+    },
+    get_reaction_key("C[Si](C)(C)Oc1ccc([Mg]Br)cc1", "CC(=O)C", "None"): {
+        "product": "C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1",
+        "product_name": "TMS保護第三級アルコール",
+        "message": "✨ 求核付加成功！アセトンとの連結が完了し、新たな炭素-炭素結合が形成された。",
+        "byproducts": [],
+        "reaction_type": "grignard_reaction"
+    },
+    get_reaction_key("C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1", "TBAF", "None"): {
+        "product": "CC(C)(O)c1ccc(O)cc1",
+        "product_name": "4-(2-ヒドロキシプロパン-2-イル)フェノール",
+        "message": "🔓 脱保護成功！！フッ化物イオン(F-)の強力な親和力でTMS基が剥ぎ取られ、ターゲット分子が出現！究極の保護基パズルを制覇！",
+        "byproducts": ["C[Si](C)(C)F"],
+        "reaction_type": "deprotection_alcohol"
     }
 }
 
