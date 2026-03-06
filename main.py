@@ -956,6 +956,157 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ アミド化成功！解熱鎮痛薬「パラセタモール」が完成した！",
         "byproducts": ["CC(=O)O"], # 酢酸
         "reaction_type": "amidation"
+    },
+    # --------------------------------------------------------
+    # Tier 2: クマリンルート
+    # --------------------------------------------------------
+    get_reaction_key("Oc1ccccc1", "C(Cl)(Cl)Cl", "NaOH"): {
+        "product": "O=Cc1ccccc1O",
+        "product_name": "サリチルアルデヒド",
+        "message": "✨ Reimer-Tiemann反応成功！フェノールのオルト位がホルミル化された。",
+        "byproducts": ["NaCl"],
+        "reaction_type": "reimer_tiemann"
+    },
+    get_reaction_key("O=Cc1ccccc1O", "CC(=O)OC(C)=O", "NaOH"): {
+        "product": "O=C1C=Cc2ccccc2O1",
+        "product_name": "🌸 クマリン",
+        "message": "✨ Perkin反応とラクトン化が連続進行！甘い香りのクマリンが完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "perkin_condensation"
+    },
+    # Base触媒の表記ゆれ用
+    get_reaction_key("O=Cc1ccccc1O", "CC(=O)OC(C)=O", "Base"): {
+        "product": "O=C1C=Cc2ccccc2O1",
+        "product_name": "🌸 クマリン",
+        "message": "✨ Perkin反応とラクトン化が連続進行！甘い香りのクマリンが完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "perkin_condensation"
+    },
+    # --------------------------------------------------------
+    # Tier 2: リドカインルート
+    # --------------------------------------------------------
+    get_reaction_key("Cc1cccc(C)c1N", "ClCC(=O)Cl", "None"): {
+        "product": "Cc1cccc(C)c1NC(=O)CCl",
+        "product_name": "クロロアセトアミド中間体",
+        "message": "✨ アミド結合形成！リドカイン合成の第一段階をクリアした。",
+        "byproducts": ["HCl"],
+        "reaction_type": "amidation"
+    },
+    get_reaction_key("Cc1cccc(C)c1NC(=O)CCl", "CCNCC", "None"): {
+        "product": "CCN(CC)CC(=O)Nc1c(C)cccc1C",
+        "product_name": "💊 リドカイン",
+        "message": "✨ S_N2反応成功！優れた局所麻酔薬「リドカイン」が完成した！",
+        "byproducts": ["HCl"],
+        "reaction_type": "sn2_substitution"
+    },
+    # --------------------------------------------------------
+    # Tier 2: フルオレセインルート
+    # --------------------------------------------------------
+    get_reaction_key("O=C1OC(=O)c2ccccc12", "Oc1cc(O)ccc1", "ZnCl2"): {
+        "product": "O=C1OC2(c3ccccc13)c4ccc(O)cc4Oc5cc(O)ccc25",
+        "product_name": "☢️ フルオレセイン",
+        "message": "✨ Friedel-Crafts型縮合成功！ブラックライトで鮮やかに光る「フルオレセイン」が完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "friedel_crafts_condensation"
+    },
+    # --------------------------------------------------------
+    # Tier 3: イブプロフェンルート
+    # --------------------------------------------------------
+    get_reaction_key("CC(C)Cc1ccccc1", "CC(=O)Cl", "AlCl3"): {
+        "product": "CC(C)Cc1ccc(C(C)=O)cc1",
+        "product_name": "p-イソブチルアセトフェノン",
+        "message": "✨ Friedel-Craftsアシル化成功！イブプロフェン合成の骨格ができた。",
+        "byproducts": ["HCl"],
+        "reaction_type": "friedel_crafts_acylation"
+    },
+    get_reaction_key("CC(C)Cc1ccc(C(C)=O)cc1", "[C-]#[O+]", "Pd"): {
+        "product": "CC(C)Cc1ccc(C(C)C(=O)O)cc1",
+        "product_name": "💊 イブプロフェン",
+        "message": "✨ BHCプロセスによるアトムエコノミーの高い反応が進行！鎮痛薬「イブプロフェン」が完成した！",
+        "byproducts": [],
+        "reaction_type": "catalytic_carbonylation"
+    },
+    # --------------------------------------------------------
+    # Tier 3: サッカリンルート
+    # --------------------------------------------------------
+    get_reaction_key("Cc1ccccc1", "O=S(=O)(Cl)O", "None"): {
+        "product": "Cc1ccccc1S(=O)(=O)Cl",
+        "product_name": "o-トルエンスルホニルクロリド",
+        "message": "✨ クロロスルホン化進行。オルト置換体を抽出した。",
+        "byproducts": ["H2O"],
+        "reaction_type": "chlorosulfonation"
+    },
+    get_reaction_key("Cc1ccccc1S(=O)(=O)Cl", "N", "None"): {
+        "product": "Cc1ccccc1S(N)(=O)=O",
+        "product_name": "o-トルエンスルホンアミド",
+        "message": "✨ アミド化成功。閉環への準備が整った。",
+        "byproducts": ["HCl"],
+        "reaction_type": "amidation"
+    },
+    get_reaction_key("Cc1ccccc1S(N)(=O)=O", "O=[Mn](=O)(=O)[O-]", "Acid"): {
+        "product": "O=C1NS(=O)(=O)c2ccccc12",
+        "product_name": "🍬 サッカリン",
+        "message": "✨ メチル基の酸化と分子内閉環が連続進行！人工甘味料「サッカリン」が完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "oxidation_cyclization"
+    },
+    # Acid触媒の表記ゆれ用
+    get_reaction_key("Cc1ccccc1S(N)(=O)=O", "O=[Mn](=O)(=O)[O-]", "Acid (酸)"): {
+        "product": "O=C1NS(=O)(=O)c2ccccc12",
+        "product_name": "🍬 サッカリン",
+        "message": "✨ メチル基の酸化と分子内閉環が連続進行！人工甘味料「サッカリン」が完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "oxidation_cyclization"
+    },
+    # --------------------------------------------------------
+    # Tier 4: ナイロン6,6
+    # --------------------------------------------------------
+    get_reaction_key("O=C(Cl)CCCCC(=O)Cl", "NCCCCCCN", "None"): {
+        "product": "O=C(CCCCC(=O)NCCCCCCN)NCCCCCCN",
+        "product_name": "🧵 ナイロン6,6",
+        "message": "✨ 重縮合反応成功！単一の分子から「物質(マテリアル)」へのパラダイムシフト、「ナイロン6,6」が完成した！",
+        "byproducts": ["HCl"],
+        "reaction_type": "interfacial_polycondensation"
+    },
+    # --------------------------------------------------------
+    # Tier 4: キュバンルート
+    # --------------------------------------------------------
+    get_reaction_key("O=C1C=CC=C1", "O=C1C=CC=C1", "UV Lamp"): {
+        "product": "O=C1C2C3C4C1C5C2C3C45",
+        "product_name": "ケージドジオン中間体",
+        "message": "✨ [2+2]付加環化成功！ひずみの大きいケージ骨格が形成された。",
+        "byproducts": [],
+        "reaction_type": "photochemical_cycloaddition"
+    },
+        "product": "C12C3C4C1C5C2C3C45",
+        "product_name": "🧊 キュバン",
+        "message": "✨ Favorskii転位と脱炭酸が完了！プラトンの立体、究極のひずみ分子「キュバン」が完成した！",
+        "byproducts": ["O=C=O"],
+        "reaction_type": "favorskii_rearrangement"
+    },
+    # --------------------------------------------------------
+    # Tier 5: ナノプシャン (Final)
+    # --------------------------------------------------------
+    get_reaction_key("c1ccccc1I", "C#Cc1ccc(C#C)cc1", "Pd/Cu"): {
+        "product": "c1ccccc1C#Cc2ccc(C#C)cc2",
+        "product_name": "ナノプシャン上半身",
+        "message": "✨ Sonogashiraカップリング成功！頭部と胴体が結合し、ナノプシャンの上半身が完成した。",
+        "byproducts": ["HI"],
+        "reaction_type": "sonogashira_coupling"
+    },
+    get_reaction_key("Ic1cc(I)ccc1", "CCC(CC)C#C", "Pd/Cu"): {
+        "product": "CCC(CC)C#Cc1cc(I)ccc1",
+        "product_name": "ナノプシャン下半身",
+        "message": "✨ Sonogashiraカップリング成功！骨盤と脚部が結合し、ナノプシャンの下半身が完成した。",
+        "byproducts": ["HI"],
+        "reaction_type": "sonogashira_coupling"
+    },
+    get_reaction_key("c1ccccc1C#Cc2ccc(C#C)cc2", "CCC(CC)C#Cc1cc(I)ccc1", "Pd/Cu"): {
+        "product": "c1ccccc1C#Cc2ccc(C#Cc3cc(C#CC(CC)CC)ccc3)cc2",
+        "product_name": "🕺 ナノプシャン",
+        "message": "✨ 究極のクロスカップリングが完了！！分子サイズの小人「ナノプシャン」が誕生した！",
+        "byproducts": ["HI"],
+        "reaction_type": "sonogashira_coupling"
     }
 }
 
