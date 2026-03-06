@@ -123,6 +123,16 @@ def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, 
 
 OPEN_WORLD_REACTIONS = {
     # --------------------------------------------------------
+    # インディゴ合成 (Root)
+    # --------------------------------------------------------
+    get_reaction_key("O=[N+]([O-])c1ccccc1C=O", "CC(=O)C", "NaOH"): {
+        "product": "O=C1Nc2ccccc2C1=C1C(=O)Nc2ccccc21",
+        "product_name": "🔵 インディゴ",
+        "message": "✨ Baeyer-Drewson反応と酸化二量化が連続進行！伝説の染料「インディゴ」が完成した！",
+        "byproducts": ["H2O"],
+        "reaction_type": "baeyer_drewson_condensation"
+    },
+    # --------------------------------------------------------
     # Tier 1: アスピリンルート
     # --------------------------------------------------------
     get_reaction_key("c1ccccc1O", "O=C=O", "NaOH"): {
