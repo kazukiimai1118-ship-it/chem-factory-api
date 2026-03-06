@@ -1198,6 +1198,47 @@ OPEN_WORLD_REACTIONS = {
         "message": "🔓 脱保護成功！！フッ化物イオン(F-)の強力な親和力でTMS基が剥ぎ取られ、ターゲット分子が出現！究極の保護基パズルを制覇！",
         "byproducts": ["C[Si](C)(C)F"],
         "reaction_type": "deprotection_alcohol"
+    },
+    # --------------------------------------------------------
+    # 保護・脱保護ルート (ペプチド合成/Cbz)
+    # --------------------------------------------------------
+    get_reaction_key("NC(CC(=O)O)C(=O)O", "O=C(Cl)OCc1ccccc1", "Base"): {
+        "product": "O=C(O)CC(NC(=O)OCc1ccccc1)C(=O)O",
+        "product_name": "Cbz-アスパラギン酸",
+        "message": "✨ Cbz保護成功！アミノ基がベンジルオキシカルボニル基で保護され、自己縮合を防ぐ準備が整った。",
+        "byproducts": ["HCl"],
+        "reaction_type": "protection_amine"
+    },
+    get_reaction_key("O=C(O)CC(NC(=O)OCc1ccccc1)C(=O)O", "COC(=O)C(N)Cc1ccccc1", "Acid"): {
+        "product": "COC(=O)C(Cc1ccccc1)NC(=O)C(CC(=O)O)NC(=O)OCc1ccccc1",
+        "product_name": "Cbz-アスパルテーム",
+        "message": "✨ ペプチド結合形成！2つのアミノ酸が正しく連結された。",
+        "byproducts": ["H2O"],
+        "reaction_type": "peptide_coupling"
+    },
+    get_reaction_key("COC(=O)C(Cc1ccccc1)NC(=O)C(CC(=O)O)NC(=O)OCc1ccccc1", "[H][H]", "Pd/C"): {
+        "product": "COC(=O)C(Cc1ccccc1)NC(=O)C(N)CC(=O)O",
+        "product_name": "💊 アスパルテーム",
+        "message": "🔓 脱保護成功！！水素化分解によりCbz基が外れ、人工甘味料「アスパルテーム」が完成した！",
+        "byproducts": ["Cc1ccccc1"],
+        "reaction_type": "deprotection_amine"
+    },
+    # --------------------------------------------------------
+    # 保護・脱保護ルート (アルキン保護/TMS)
+    # --------------------------------------------------------
+    get_reaction_key("O=Cc1ccc(Br)cc1", "C#C[Si](C)(C)C", "Pd/Cu"): {
+        "product": "C[Si](C)(C)C#Cc1ccc(C=O)cc1",
+        "product_name": "TMS保護アルキン",
+        "message": "✨ Sonogashiraカップリング成功！TMS基によりアルキンの二量化（ホモカップリング）が完全に防がれた。",
+        "byproducts": ["HBr"],
+        "reaction_type": "sonogashira_coupling"
+    },
+    get_reaction_key("C[Si](C)(C)C#Cc1ccc(C=O)cc1", "O=C([O-])[O-]", "None"): {
+        "product": "O=Cc1ccc(C#C)cc1",
+        "product_name": "4-エチニルベンズアルデヒド",
+        "message": "🔓 脱保護成功！！塩基処理によりTMS基が外れ、反応性の高い末端アルキンが露出した！",
+        "byproducts": ["C[Si](C)(C)O"],
+        "reaction_type": "deprotection_alkyne"
     }
 }
 
