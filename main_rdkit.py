@@ -586,6 +586,22 @@ class ProductInfo(BaseModel):
     carbon_class: Optional[str] = None
     reaction_type: Optional[str] = None
 
+class AtomInfo(BaseModel):
+    idx: int
+    symbol: str
+    x: float
+    y: float
+    is_reactive: bool = False # 将来のハイライト用
+
+class BondInfo(BaseModel):
+    begin_idx: int
+    end_idx: int
+    order: float
+
+class PuzzleGraph(BaseModel):
+    atoms: list[AtomInfo] = []
+    bonds: list[BondInfo] = []
+
 class ReactResponse(BaseModel):
     status: ResultStatus
     message: str
@@ -599,15 +615,16 @@ class ReactResponse(BaseModel):
     tier: Optional[str] = Field(None, description="tier1_rule or tier2_ai")
     ai_latency_seconds: Optional[float] = Field(None)
     ai_model: Optional[str] = Field(None)
-    image_base64: Optional[str] = Field(None, description="Base64 encoded PNG image")
-    rarity: Optional[str] = Field(None, description="ゲーム内のレア度 (N, SR, SSRなど)")
-    flavor_text: Optional[str] = Field(None, description="フレーバーテキスト")
-    quiz_question: Optional[str] = Field(None, description="学習用クイズの問題文")
-    quiz_options: Optional[list[str]] = Field(None, description="クイズの選択肢")
-    quiz_correct_index: Optional[int] = Field(None, description="正解のインデックス(0-2)")
+    image_base64: Optional[str] = None
+    rarity: Optional[str] = None
+    flavor_text: Optional[str] = None
+    quiz_question: Optional[str] = None
+    quiz_options: Optional[list[str]] = None
+    quiz_correct_index: Optional[int] = None
     # --- パズル (メカニズム解析) 追加フィールド ---
-    puzzle_nodes: list[str] = Field(default_factory=list, description="パズルに表示する官能基や原子のリスト")
-    puzzle_arrows: list[list[str]] = Field(default_factory=list, description="正解となる電子の移動矢印 (例: [['Nu⁻', 'C(α)'], ['C(α)', 'X']])")
+    puzzle_nodes: list[str] = Field(default_factory=list)
+    puzzle_arrows: list[list[str]] = Field(default_factory=list)
+    puzzle_graph: Optional[PuzzleGraph] = Field(default=None, description="2Dキャンバス描画用の分子グラフデータ")
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +648,48 @@ def generate_image_base64(smiles: str) -> Optional[str]:
         return img_base64
     except Exception as e:
         logger.warning(f"Image generation failed for SMILES '{smiles}': {e}")
+        return None
+
+def generate_puzzle_graph(smiles1: str, smiles2: str) -> PuzzleGraph | None:
+    """反応物1と2を結合した状態の2D座標と結合リストを生成する"""
+    try:
+        combined_smiles = f"{smiles1}.{smiles2}"
+        mol = Chem.MolFromSmiles(combined_smiles)
+        if not mol:
+            return None
+        
+        # 隠れ水素を明示的に追加（パズルでC-H結合などを触らせるため）
+        mol = Chem.AddHs(mol)
+        
+        # 2D座標の計算
+        AllChem.Compute2DCoords(mol)
+        conf = mol.GetConformer()
+        
+        atoms = []
+        for atom in mol.GetAtoms():
+            pos = conf.GetAtomPosition(atom.GetIdx())
+            symbol = atom.GetSymbol()
+            # PoCとして、炭素と水素以外（ヘテロ原子）をreactiveとしてマーク
+            is_reactive = symbol not in ["C", "H"]
+            atoms.append(AtomInfo(
+                idx=atom.GetIdx(), 
+                symbol=symbol,
+                x=pos.x, 
+                y=pos.y, 
+                is_reactive=is_reactive
+            ))
+            
+        bonds = []
+        for bond in mol.GetBonds():
+            bonds.append(BondInfo(
+                begin_idx=bond.GetBeginAtomIdx(),
+                end_idx=bond.GetEndAtomIdx(),
+                order=bond.GetBondTypeAsDouble()
+            ))
+            
+        return PuzzleGraph(atoms=atoms, bonds=bonds)
+    except Exception as e:
+        logger.error(f"Puzzle graph generation error: {e}")
         return None
 
 
@@ -1006,6 +1065,8 @@ async def react(req: ReactRequest):
                 p_nodes = ["Benzene", "Acyl Cation", "AlCl₃", "H⁺"]
                 p_arrows = [["Benzene", "Acyl Cation"], ["Acyl Cation", "H⁺"]]
 
+            p_graph = generate_puzzle_graph(req.reagent_1, req.reagent_2)
+
             return ReactResponse(
                 status=ResultStatus.SUCCESS,
                 message=f"🔬 Tier 1 ({reaction_type_str}) が成功しました！",
@@ -1020,7 +1081,8 @@ async def react(req: ReactRequest):
                 quiz_options=quiz_options,
                 quiz_correct_index=quiz_correct_index,
                 puzzle_nodes=p_nodes,
-                puzzle_arrows=p_arrows
+                puzzle_arrows=p_arrows,
+                puzzle_graph=p_graph
             )
         
         
@@ -1058,6 +1120,7 @@ async def react(req: ReactRequest):
                 p_arrows = [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
 
         img_b64 = generate_image_base64(recipe["product"])
+        p_graph = generate_puzzle_graph(req.reagent_1, req.reagent_2)
         return ReactResponse(
             status=ResultStatus.SUCCESS,
             message=recipe["message"],
@@ -1072,7 +1135,8 @@ async def react(req: ReactRequest):
             rarity="SSR" if "💊" in recipe["product_name"] else "SR",
             flavor_text=recipe.get("message", ""),
             puzzle_nodes=p_nodes,
-            puzzle_arrows=p_arrows
+            puzzle_arrows=p_arrows,
+            puzzle_graph=p_graph
         )
 
     # ----------------------------------------------------------------------

@@ -802,6 +802,22 @@ class ProductInfo(BaseModel):
     )
 
 
+class AtomInfo(BaseModel):
+    idx: int
+    symbol: str
+    x: float
+    y: float
+    is_reactive: bool = False # 将来のハイライト用
+
+class BondInfo(BaseModel):
+    begin_idx: int
+    end_idx: int
+    order: float
+
+class PuzzleGraph(BaseModel):
+    atoms: list[AtomInfo] = []
+    bonds: list[BondInfo] = []
+
 class ReactResponse(BaseModel):
     """反応レスポンス"""
     status: ResultStatus
@@ -830,8 +846,9 @@ class ReactResponse(BaseModel):
         None, description="Tier 2 AI 推論にかかった時間 (秒)",
     )
     # --- パズル (メカニズム解析) 追加フィールド ---
-    puzzle_nodes: list[str] = Field(default_factory=list, description="パズルに表示する官能基や原子のリスト")
-    puzzle_arrows: list[list[str]] = Field(default_factory=list, description="正解となる電子の移動矢印 (例: [['Nu⁻', 'C(α)'], ['C(α)', 'X']])")
+    puzzle_nodes: list[str] = Field(default_factory=list)
+    puzzle_arrows: list[list[str]] = Field(default_factory=list)
+    puzzle_graph: Optional[PuzzleGraph] = Field(default=None, description="2Dキャンバス描画用の分子グラフデータ")
     ai_model: Optional[str] = Field(
         None, description="使用された AI モデル名",
     )
