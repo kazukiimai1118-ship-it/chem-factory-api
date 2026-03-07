@@ -130,7 +130,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "🔵 インディゴ",
         "message": "✨ Baeyer-Drewson反応と酸化二量化が連続進行！伝説の染料「インディゴ」が完成した！",
         "byproducts": ["H2O"],
-        "reaction_type": "baeyer_drewson_condensation"
+        "reaction_type": "baeyer_drewson_condensation",
+        "puzzle_nodes": ["Acetone", "OH⁻", "CHO", "NO₂"],
+        "puzzle_arrows": [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
     },
     # --------------------------------------------------------
     # Tier 1: アスピリンルート
@@ -147,7 +149,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "💊 アスピリン",
         "message": "✨ エステル化成功！世界初の人工合成医薬品「アスピリン」が完成した！",
         "byproducts": ["CC(=O)O"], # 酢酸
-        "reaction_type": "esterification"
+        "reaction_type": "esterification",
+        "puzzle_nodes": ["Phenol-OH", "Carbonyl-C", "Carbonyl-O"],
+        "puzzle_arrows": [["Phenol-OH", "Carbonyl-C"], ["Carbonyl-C", "Carbonyl-O"]]
     },
     # --------------------------------------------------------
     # Tier 1: パラセタモールルート
@@ -220,7 +224,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "💊 リドカイン",
         "message": "✨ S_N2反応成功！優れた局所麻酔薬「リドカイン」が完成した！",
         "byproducts": ["HCl"],
-        "reaction_type": "sn2_substitution"
+        "reaction_type": "sn2_substitution",
+        "puzzle_nodes": ["-NH₂ (求核剤)", "CH₂ (α炭素)", "-Cl (脱離基)"],
+        "puzzle_arrows": [["-NH₂ (求核剤)", "CH₂ (α炭素)"], ["CH₂ (α炭素)", "-Cl (脱離基)"]]
     },
     # --------------------------------------------------------
     # Tier 2: フルオレセインルート
@@ -317,21 +323,27 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "ナノプシャン上半身",
         "message": "✨ Sonogashiraカップリング成功！頭部と胴体が結合し、ナノプシャンの上半身が完成した。",
         "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
+        "reaction_type": "sonogashira_coupling",
+        "puzzle_nodes": ["Alkyne", "Aryl Iodide", "Pd/Cu", "Internal Alkyne"],
+        "puzzle_arrows": [["Alkyne", "Pd/Cu"], ["Pd/Cu", "Aryl Iodide"]]
     },
     get_reaction_key("Ic1cc(I)ccc1", "CCC(CC)C#C", "Pd/Cu"): {
         "product": "CCC(CC)C#Cc1cc(I)ccc1",
         "product_name": "ナノプシャン下半身",
         "message": "✨ Sonogashiraカップリング成功！骨盤と脚部が結合し、ナノプシャンの下半身が完成した。",
         "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
+        "reaction_type": "sonogashira_coupling",
+        "puzzle_nodes": ["Alkyne", "Aryl Iodide", "Pd/Cu", "Internal Alkyne"],
+        "puzzle_arrows": [["Alkyne", "Pd/Cu"], ["Pd/Cu", "Aryl Iodide"]]
     },
     get_reaction_key("c1ccccc1C#Cc2ccc(C#C)cc2", "CCC(CC)C#Cc1cc(I)ccc1", "Pd/Cu"): {
         "product": "c1ccccc1C#Cc2ccc(C#Cc3cc(C#CC(CC)CC)ccc3)cc2",
         "product_name": "🕺 ナノプシャン",
         "message": "✨ 究極のクロスカップリングが完了！！分子サイズの小人「ナノプシャン」が誕生した！",
         "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
+        "reaction_type": "sonogashira_coupling",
+        "puzzle_nodes": ["Alkyne", "Aryl Iodide", "Pd/Cu", "Internal Alkyne"],
+        "puzzle_arrows": [["Alkyne", "Pd/Cu"], ["Pd/Cu", "Aryl Iodide"]]
     },
     # --------------------------------------------------------
     # 保護・脱保護ルート (p-ニトロアニリン)
@@ -341,21 +353,27 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "アセトアニリド",
         "message": "✨ 保護成功！アミンをアセチル基でガードし、官能基の反応性を制御可能にした。",
         "byproducts": ["CC(=O)O"],
-        "reaction_type": "protection_amine"
+        "reaction_type": "protection_amine",
+        "puzzle_nodes": ["Aniline", "Ac₂O", "Acetoanilide", "Acetate"],
+        "puzzle_arrows": [["Aniline", "Ac₂O"], ["Ac₂O", "Acetate"]]
     },
     get_reaction_key("CC(=O)Nc1ccccc1", "HNO3", "Acid"): {
         "product": "CC(=O)Nc1ccc([N+](=O)[O-])cc1",
         "product_name": "p-ニトロアセトアニリド",
         "message": "✨ ニトロ化成功！保護基のおかげでアミノ基の酸化を防ぎ、パラ位にニトロ基が導入された。",
         "byproducts": ["H2O"],
-        "reaction_type": "nitration"
+        "reaction_type": "nitration",
+        "puzzle_nodes": ["Acetoanilide", "NO₂⁺", "H⁺", "H₂SO₄"],
+        "puzzle_arrows": [["Acetoanilide", "NO₂⁺"], ["NO₂⁺", "H⁺"]]
     },
     get_reaction_key("CC(=O)Nc1ccc([N+](=O)[O-])cc1", "O", "Acid"): {
         "product": "Nc1ccc([N+](=O)[O-])cc1",
         "product_name": "p-ニトロアニリン",
         "message": "🔓 脱保護成功！！アミドを加水分解し、保護されていたアミンが復活した. 鮮やかな黄色のp-ニトロアニリンが完成！",
         "byproducts": ["CC(=O)O"],
-        "reaction_type": "deprotection_amine"
+        "reaction_type": "deprotection_amine",
+        "puzzle_nodes": ["Amide", "H₂O", "H⁺", "Amine"],
+        "puzzle_arrows": [["H₂O", "Amide"], ["Amide", "H⁺"]]
     },
     # --------------------------------------------------------
     # 保護・脱保護ルート (ケトン保護)
@@ -365,21 +383,27 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "アセタール保護カルボン酸",
         "message": "✨ 保護成功！ケトンを環状アセタールとしてガード。これでLiAlH4の攻撃から身を守れるぞ！",
         "byproducts": ["H2O"],
-        "reaction_type": "protection_ketone"
+        "reaction_type": "protection_ketone",
+        "puzzle_nodes": ["Ketone", "Ethylene Glycol", "H⁺", "Acetal"],
+        "puzzle_arrows": [["Ethylene Glycol", "Ketone"], ["Ketone", "H⁺"]]
     },
     get_reaction_key("O=C(O)c1ccc(C2(C)OCCO2)cc1", "LiAlH4", "None"): {
         "product": "OCCc1ccc(C2(C)OCCO2)cc1",
         "product_name": "アセタール保護アルコール",
         "message": "✨ 還元成功！ケトンは無傷のまま、カルボキシ基だけが選択的にアルコールへ還元された。",
         "byproducts": [],
-        "reaction_type": "reduction"
+        "reaction_type": "reduction",
+        "puzzle_nodes": ["C=O", "H⁻", "LiAlH₄", "O⁻"],
+        "puzzle_arrows": [["LiAlH₄", "H⁻"], ["H⁻", "C=O"]]
     },
     get_reaction_key("OCCc1ccc(C2(C)OCCO2)cc1", "O", "Acid"): {
         "product": "CC(=O)c1ccc(CO)cc1",
         "product_name": "4-アセチルベンジルアルコール",
         "message": "🔓 脱保護成功！！酸による加水分解でアセタールが外れ、ケトンが鮮やかに再出現した！多官能基分子の選択的合成に勝利！",
         "byproducts": ["OCCO"],
-        "reaction_type": "deprotection_ketone"
+        "reaction_type": "deprotection_ketone",
+        "puzzle_nodes": ["Acetal", "H₂O", "H⁺", "Ketone"],
+        "puzzle_arrows": [["H₂O", "Acetal"], ["Acetal", "H⁺"]]
     },
     # --------------------------------------------------------
     # 保護・脱保護ルート (アルコール保護/TMS)
@@ -389,28 +413,36 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "TMS保護ブロモベンゼン",
         "message": "✨ 保護成功！TMS基がフェノール性OHをガード。これでMgによるグリニャール化が可能になった！",
         "byproducts": ["HCl"],
-        "reaction_type": "protection_alcohol"
+        "reaction_type": "protection_alcohol",
+        "puzzle_nodes": ["Phenol", "TMS-Cl", "Base", "TMS-Ether"],
+        "puzzle_arrows": [["Phenol", "TMS-Cl"], ["TMS-Cl", "Base"]]
     },
     get_reaction_key("C[Si](C)(C)Oc1ccc(Br)cc1", "Mg", "None"): {
         "product": "C[Si](C)(C)Oc1ccc([Mg]Br)cc1",
         "product_name": "TMS保護グリニャール",
         "message": "✨ グリニャール試薬調製完了。保護されたフェノールが強力な求核剤として牙を剥く！",
         "byproducts": [],
-        "reaction_type": "grignard_preparation"
+        "reaction_type": "grignard_preparation",
+        "puzzle_nodes": ["R-X", "Mg", "Ether", "R-Mg-X"],
+        "puzzle_arrows": [["Mg", "R-X"]]
     },
     get_reaction_key("C[Si](C)(C)Oc1ccc([Mg]Br)cc1", "CC(=O)C", "None"): {
         "product": "C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1",
         "product_name": "TMS保護第三級アルコール",
         "message": "✨ 求核付加成功！アセトンとの連結が完了し、新たな炭素-炭素結合が形成された。",
         "byproducts": [],
-        "reaction_type": "grignard_reaction"
+        "reaction_type": "grignard_reaction",
+        "puzzle_nodes": ["R-Mg-X", "C=O", "Mg²⁺", "O⁻"],
+        "puzzle_arrows": [["R-Mg-X", "C=O"], ["C=O", "Mg²⁺"]]
     },
     get_reaction_key("C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1", "TBAF", "None"): {
         "product": "CC(C)(O)c1ccc(O)cc1",
         "product_name": "4-(2-ヒドロキシプロパン-2-イル)フェノール",
         "message": "🔓 脱保護成功！！フッ化物イオン(F-)の強力な親和力でTMS基が剥ぎ取られ、ターゲット分子が出現！究極の保護基パズルを制覇！",
         "byproducts": ["C[Si](C)(C)F"],
-        "reaction_type": "deprotection_alcohol"
+        "reaction_type": "deprotection_alcohol",
+        "puzzle_nodes": ["TMS-Ether", "F⁻", "Si", "O⁻"],
+        "puzzle_arrows": [["F⁻", "Si"], ["Si", "O⁻"]]
     },
     # --------------------------------------------------------
     # 保護・脱保護ルート (ペプチド合成/Cbz)
@@ -427,14 +459,18 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "Cbz-アスパルテーム",
         "message": "✨ ペプチド結合形成！2つのアミノ酸が正しく連結された。",
         "byproducts": ["H2O"],
-        "reaction_type": "peptide_coupling"
+        "reaction_type": "peptide_coupling",
+        "puzzle_nodes": ["Cbz-Asp", "Phe-OMe", "DCC/Base", "Peptide"],
+        "puzzle_arrows": [["Cbz-Asp", "Phe-OMe"], ["Phe-OMe", "DCC/Base"]]
     },
     get_reaction_key("COC(=O)C(Cc1ccccc1)NC(=O)C(CC(=O)O)NC(=O)OCc1ccccc1", "[H][H]", "Pd/C"): {
         "product": "COC(=O)C(Cc1ccccc1)NC(=O)C(N)CC(=O)O",
         "product_name": "💊 アスパルテーム",
         "message": "🔓 脱保護成功！！水素化分解によりCbz基が外れ、人工甘味料「アスパルテーム」が完成した！",
         "byproducts": ["Cc1ccccc1"],
-        "reaction_type": "deprotection_amine"
+        "reaction_type": "deprotection_amine",
+        "puzzle_nodes": ["Cbz-Peptide", "H₂", "Pd/C", "Amine"],
+        "puzzle_arrows": [["H₂", "Pd/C"], ["Pd/C", "Cbz-Peptide"]]
     },
     # --------------------------------------------------------
     # 保護・脱保護ルート (アルキン保護/TMS)
@@ -451,7 +487,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "4-エチニルベンズアルデヒド",
         "message": "🔓 脱保護成功！！塩基処理によりTMS基が外れ、反応性の高い末端アルキンが露出した！",
         "byproducts": ["C[Si](C)(C)O"],
-        "reaction_type": "deprotection_alkyne"
+        "reaction_type": "deprotection_alkyne",
+        "puzzle_nodes": ["TMS-Alkyne", "Base", "Si", "C⁻"],
+        "puzzle_arrows": [["Base", "Si"], ["Si", "C⁻"]]
     }
 }
 
@@ -497,6 +535,9 @@ class ReactResponse(BaseModel):
     quiz_question: Optional[str] = Field(None, description="学習用クイズの問題文")
     quiz_options: Optional[list[str]] = Field(None, description="クイズの選択肢")
     quiz_correct_index: Optional[int] = Field(None, description="正解のインデックス(0-2)")
+    # --- パズル (メカニズム解析) 追加フィールド ---
+    puzzle_nodes: list[str] = Field(default_factory=list, description="パズルに表示する官能基や原子のリスト")
+    puzzle_arrows: list[list[str]] = Field(default_factory=list, description="正解となる電子の移動矢印 (例: [['Nu⁻', 'C(α)'], ['C(α)', 'X']])")
 
 
 # ---------------------------------------------------------------------------
@@ -881,6 +922,27 @@ async def react(req: ReactRequest):
             quiz_options = ["低温", "高温", "中性条件"]
             quiz_correct_index = 1
         
+        # パズルデータの生成
+        p_nodes, p_arrows = [], []
+        if "Radical" in reaction_type_str:
+            p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
+            p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
+        elif "Substitution" in reaction_type_str or "SN2" in reaction_type_str:
+            p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
+            p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
+        elif "Elimination" in reaction_type_str or "E2" in reaction_type_str:
+            p_nodes = ["Base", "H(β)", "C(α)", "X"]
+            p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
+        elif reaction_type_str == "Grignard Reagent Formation":
+            p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
+            p_arrows = [["Mg", "R-X"]]
+        elif reaction_type_str == "Grignard Chain Extension":
+            p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
+            p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
+        elif "Electrophilic" in reaction_type_str:
+            p_nodes = ["Benzene", "Acyl Cation", "AlCl₃", "H⁺"]
+            p_arrows = [["Benzene", "Acyl Cation"], ["Acyl Cation", "H⁺"]]
+
         return ReactResponse(
             status=ResultStatus.SUCCESS,
             message=f"🔬 Tier 1 ({reaction_type_str}) が成功しました！",
@@ -893,7 +955,9 @@ async def react(req: ReactRequest):
             flavor_text=flavor_text,
             quiz_question=quiz_question,
             quiz_options=quiz_options,
-            quiz_correct_index=quiz_correct_index
+            quiz_correct_index=quiz_correct_index,
+            puzzle_nodes=p_nodes,
+            puzzle_arrows=p_arrows
         )
         
         
@@ -916,7 +980,9 @@ async def react(req: ReactRequest):
             tier="tier1_registry",
             image_base64=img_b64,
             rarity="SSR" if "💊" in recipe["product_name"] else "SR",
-            flavor_text=recipe.get("message", "")
+            flavor_text=recipe.get("message", ""),
+            puzzle_nodes=recipe.get("puzzle_nodes", []),
+            puzzle_arrows=recipe.get("puzzle_arrows", [])
         )
 
     # ----------------------------------------------------------------------

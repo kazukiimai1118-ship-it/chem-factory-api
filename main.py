@@ -829,6 +829,9 @@ class ReactResponse(BaseModel):
     ai_latency_seconds: Optional[float] = Field(
         None, description="Tier 2 AI 推論にかかった時間 (秒)",
     )
+    # --- パズル (メカニズム解析) 追加フィールド ---
+    puzzle_nodes: list[str] = Field(default_factory=list, description="パズルに表示する官能基や原子のリスト")
+    puzzle_arrows: list[list[str]] = Field(default_factory=list, description="正解となる電子の移動矢印 (例: [['Nu⁻', 'C(α)'], ['C(α)', 'X']])")
     ai_model: Optional[str] = Field(
         None, description="使用された AI モデル名",
     )
@@ -934,7 +937,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "💊 アスピリン",
         "message": "✨ エステル化成功！世界初の人工合成医薬品「アスピリン」が完成した！",
         "byproducts": ["CC(=O)O"], # 酢酸
-        "reaction_type": "esterification"
+        "reaction_type": "esterification",
+        "puzzle_nodes": ["Phenol-OH", "Carbonyl-C", "Carbonyl-O"],
+        "puzzle_arrows": [["Phenol-OH", "Carbonyl-C"], ["Carbonyl-C", "Carbonyl-O"]]
     },
     # --------------------------------------------------------
     # Tier 1: パラセタモールルート
@@ -1007,7 +1012,9 @@ OPEN_WORLD_REACTIONS = {
         "product_name": "💊 リドカイン",
         "message": "✨ S_N2反応成功！優れた局所麻酔薬「リドカイン」が完成した！",
         "byproducts": ["HCl"],
-        "reaction_type": "sn2_substitution"
+        "reaction_type": "sn2_substitution",
+        "puzzle_nodes": ["-NH₂ (求核剤)", "CH₂ (α炭素)", "-Cl (脱離基)"],
+        "puzzle_arrows": [["-NH₂ (求核剤)", "CH₂ (α炭素)"], ["CH₂ (α炭素)", "-Cl (脱離基)"]]
     },
     # --------------------------------------------------------
     # Tier 2: フルオレセインルート
@@ -1329,7 +1336,9 @@ async def react(req: ReactRequest):
             condition_summary=f"Catalyst: {cat or 'None'}",
             tier="tier1_registry",
             rarity="SSR" if "💊" in recipe["product_name"] else "SR",
-            flavor_text=recipe.get("message", "")
+            flavor_text=recipe.get("message", ""),
+            puzzle_nodes=recipe.get("puzzle_nodes", []),
+            puzzle_arrows=recipe.get("puzzle_arrows", [])
         )
 
     # ==================================================================
@@ -1467,6 +1476,8 @@ def _handle_radical_halogenation(req: ReactRequest) -> ReactResponse:
         byproducts=[hx_display.get(halogen, f"H{halogen}")],
         hx_byproduct=hx_display.get(halogen, f"H{halogen}"),
         condition_summary=f"hν (光) + {req.reagent_2}",
+        puzzle_nodes=["R-H", "X·", "X₂", "R·", "hν"],
+        puzzle_arrows=[["X₂", "hν"], ["R-H", "X·"]]
     )
 
 
@@ -1560,6 +1571,8 @@ def _handle_substitution_elimination(req: ReactRequest) -> ReactResponse:
             byproducts=byproducts_list,
             hx_byproduct=hx,
             condition_summary=condition_desc,
+            puzzle_nodes=["Base", "H(β)", "C(α)", "X"],
+            puzzle_arrows=[["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
         )
 
     else:
@@ -1603,6 +1616,8 @@ def _handle_substitution_elimination(req: ReactRequest) -> ReactResponse:
                 products=product_infos,
                 byproducts=[f"{leaving}⁻ (脱離したハロゲン化物イオン)"],
                 condition_summary=condition_desc,
+                puzzle_nodes=["Nu⁻", "C(α)", "X"],
+                puzzle_arrows=[["Nu⁻", "C(α)"], ["C(α)", "X"]]
             )
 
         else:
@@ -1922,6 +1937,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "🧪 生成物: ニトロベンゼン (淡黄色の液体、アーモンドの匂い)"
         ),
         "condition": "c1ccccc1 + HNO3 → C₆H₅NO₂ + H₂O (EAS ニトロ化)",
+        "puzzle_nodes": ["Benzene", "NO₂⁺", "H⁺", "H₂SO₄"],
+        "puzzle_arrows": [["Benzene", "NO₂⁺"], ["NO₂⁺", "H⁺"]]
     },
     "reduction_nitro": {
         "product": "ANILINE",
@@ -1936,6 +1953,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "💡 ヒント: アミノ基は高い求核性と電子供与性を持つ重要な官能基"
         ),
         "condition": "C₆H₅NO₂ + Sn/HCl → C₆H₅NH₂ (Béchamp 還元)",
+        "puzzle_nodes": ["-NO₂", "H⁺", "e⁻", "-NH₂"],
+        "puzzle_arrows": [["e⁻", "-NO₂"], ["-NO₂", "H⁺"]]
     },
     "vilsmeier_haack": {
         "product": "2_AMINOBENZALDEHYDE",
@@ -1951,6 +1970,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "    オルト位が選択的にホルミル化される"
         ),
         "condition": "C₆H₅NH₂ + DMF/POCl₃ → 2-NH₂-C₆H₄-CHO (Vilsmeier-Haack)",
+        "puzzle_nodes": ["Aniline", "Vilsmeier試薬", "POCl₃", "CHO"],
+        "puzzle_arrows": [["Aniline", "Vilsmeier試薬"], ["Vilsmeier試薬", "POCl₃"]]
     },
     "diazotization": {
         "product": "2_NITROBENZALDEHYDE",
@@ -1965,6 +1986,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "💡 これがインディゴ合成の核心的な出発原料！"
         ),
         "condition": "2-NH₂-C₆H₄-CHO + NaNO₂ → 2-NO₂-C₆H₄-CHO + N₂ (ジアゾ化 + Sandmeyer)",
+        "puzzle_nodes": ["-NH₂", "NO⁺", "H₂O", "-N₂⁺"],
+        "puzzle_arrows": [["-NH₂", "NO⁺"], ["NO⁺", "H₂O"]]
     },
     "aldol_condensation": {
         "product": "INDOXYL",
@@ -1980,6 +2003,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "💡 これが酸化されるとインディゴになる最後の中間体"
         ),
         "condition": "2-NO₂-C₆H₄-CHO + CH₃COCH₃ + NaOH → Indoxyl (Baeyer-Drewson)",
+        "puzzle_nodes": ["Acetone", "OH⁻", "CHO", "NO₂"],
+        "puzzle_arrows": [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
     },
     "oxidative_dimerization": {
         "product": "INDIGO",
@@ -1996,6 +2021,8 @@ INDIGO_REACTIONS: dict[str, dict] = {
             "おめでとう！君はインディゴの全合成に成功した！"
         ),
         "condition": "2 × Indoxyl + O₂ → Indigo + H₂O (酸化二量化)",
+        "puzzle_nodes": ["Indoxyl", "O₂", "C=C", "H₂O"],
+        "puzzle_arrows": [["Indoxyl", "O₂"], ["O₂", "Indoxyl"]]
     },
 }
 
@@ -2029,6 +2056,8 @@ def _handle_indigo_reactions(req: ReactRequest, rxn_type: str) -> ReactResponse:
         byproducts=rxn_info.get("byproducts", []),
         condition_summary=rxn_info["condition"],
         tier="tier1_rule",
+        puzzle_nodes=rxn_info.get("puzzle_nodes", []),
+        puzzle_arrows=rxn_info.get("puzzle_arrows", []),
     )
 
 
