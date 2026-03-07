@@ -913,6 +913,27 @@ def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, 
 
 OPEN_WORLD_REACTIONS = {
     # --------------------------------------------------------
+    # チュートリアル救済: ラジカルハロゲン化 (光条件なしでも成功させる)
+    # --------------------------------------------------------
+    get_reaction_key("C", "ClCl", "None"): {
+        "product": "CCl",
+        "product_name": "クロロメタン",
+        "message": "✨ ラジカルハロゲン化成功！メタンからクロロメタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
+    get_reaction_key("CC", "ClCl", "None"): {
+        "product": "CCCl",
+        "product_name": "クロロエタン",
+        "message": "✨ ラジカルハロゲン化成功！エタンからクロロエタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
+    # --------------------------------------------------------
     # インディゴ合成 (Root)
     # --------------------------------------------------------
     get_reaction_key("O=[N+]([O-])c1ccccc1C=O", "CC(=O)C", "NaOH"): {
@@ -1250,6 +1271,32 @@ OPEN_WORLD_REACTIONS = {
 }
 
 
+def find_open_world_recipe(r1: str, r2: str, req_cat: str) -> dict | None:
+    """柔軟な反応辞書検索（表記ゆれ・不要な触媒の許容）"""
+    target_pair = sorted([r1, r2])
+    req_cat_norm = (req_cat or "None").lower()
+    
+    fallback_recipe = None
+    for (k1, k2, kcat), recipe in OPEN_WORLD_REACTIONS.items():
+        if sorted([k1, k2]) == target_pair:
+            kcat_norm = kcat.lower()
+            
+            # 1. 完全一致
+            if kcat_norm == req_cat_norm:
+                return recipe
+            
+            # 2. 部分一致 (Acid vs Acid (酸) 等)
+            if kcat_norm != "none" and req_cat_norm != "none":
+                if kcat_norm in req_cat_norm or req_cat_norm in kcat_norm:
+                    return recipe
+            
+            # 3. 触媒なしレシピへのフォールバック (余計な触媒があっても許容)
+            if kcat_norm == "none":
+                fallback_recipe = recipe
+                
+    return fallback_recipe
+
+
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
     """
@@ -1309,21 +1356,7 @@ async def react(req: ReactRequest):
     # ==================================================================
     # Open World Reaction Registry (Tier 1.5)
     # ==================================================================
-    target_registry_key = get_reaction_key(r1, r2, cat)
-    recipe = OPEN_WORLD_REACTIONS.get(target_registry_key)
-    
-    # 触媒の表記ゆれ吸収 (Acid や Sn の部分一致等)
-    if not recipe:
-        sorted_r = sorted([r1, r2])
-        for (k1, k2, kcat), v in OPEN_WORLD_REACTIONS.items():
-            if k1 == sorted_r[0] and k2 == sorted_r[1]:
-                # 触媒がNone指定なら、リクエストもNoneでなければならない
-                if kcat == "None" and (not cat or cat == "None"):
-                    recipe = v; break
-                # 触媒が指定されている場合、部分一致を許容する
-                elif kcat != "None" and cat and (kcat in cat or cat in kcat or cat.startswith(kcat.split('(')[0].strip())):
-                    recipe = v; break
-
+    recipe = find_open_world_recipe(r1, r2, cat)
     if recipe:
         return ReactResponse(
             status=ResultStatus.SUCCESS,

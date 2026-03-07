@@ -62,7 +62,7 @@ app.add_middleware(
 
 def get_radical_halogenation_rxn(halogen: str) -> AllChem.ChemicalReaction:
     valid_halo = "Cl" if halogen == "ClCl" else "Br"
-    smarts = f"[C:1]([H])>>[C:1]{valid_halo}"
+    smarts = f"[#6:1]-[#1]>>[#6:1]-{valid_halo}"
     rxn = AllChem.ReactionFromSmarts(smarts)
     rxn.Initialize()
     return rxn
@@ -122,6 +122,48 @@ def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, 
     return (sorted_r[0], sorted_r[1], cat)
 
 OPEN_WORLD_REACTIONS = {
+    # --------------------------------------------------------
+    # チュートリアル救済: ラジカルハロゲン化 (光条件なしでも成功させる)
+    # --------------------------------------------------------
+    get_reaction_key("C", "ClCl", "None"): {
+        "product": "CCl",
+        "product_name": "クロロメタン",
+        "message": "✨ ラジカルハロゲン化成功！メタンからクロロメタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
+    get_reaction_key("CC", "ClCl", "None"): {
+        "product": "CCCl",
+        "product_name": "クロロエタン",
+        "message": "✨ ラジカルハロゲン化成功！エタンからクロロエタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
+    # --------------------------------------------------------
+    # チュートリアル / 初期反応 (UV Lamp 設置時)
+    # --------------------------------------------------------
+    get_reaction_key("C", "ClCl", "UV Lamp"): {
+        "product": "CCl",
+        "product_name": "クロロメタン",
+        "message": "✨ ラジカルハロゲン化成功！光エネルギーによりメタンからクロロメタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
+    get_reaction_key("CC", "ClCl", "UV Lamp"): {
+        "product": "CCCl",
+        "product_name": "クロロエタン",
+        "message": "✨ ラジカルハロゲン化成功！光エネルギーによりエタンからクロロエタンが合成された。",
+        "byproducts": ["HCl"],
+        "reaction_type": "radical_halogenation",
+        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
+        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
+    },
     # --------------------------------------------------------
     # インディゴ合成 (Root)
     # --------------------------------------------------------
@@ -482,7 +524,7 @@ OPEN_WORLD_REACTIONS = {
         "byproducts": ["HBr"],
         "reaction_type": "sonogashira_coupling"
     },
-    get_reaction_key("C[Si](C)(C)C#Cc1ccc(C=O)cc1", "O=C([O-])[O-]", "None"): {
+    get_reaction_key("O=Cc1ccc(C#C)cc1", "O=C([O-])[O-]", "None"): {
         "product": "O=Cc1ccc(C#C)cc1",
         "product_name": "4-エチニルベンズアルデヒド",
         "message": "🔓 脱保護成功！！塩基処理によりTMS基が外れ、反応性の高い末端アルキンが露出した！",
@@ -492,6 +534,34 @@ OPEN_WORLD_REACTIONS = {
         "puzzle_arrows": [["Base", "Si"], ["Si", "C⁻"]]
     }
 }
+
+
+def find_open_world_recipe(r1: str, r2: str, req_cat: str) -> dict | None:
+    """柔軟な反応辞書検索（表記ゆれ・不要な触媒の許容）"""
+    c1 = _canon(r1)
+    c2 = _canon(r2)
+    target_pair = sorted([c1, c2])
+    req_cat_norm = (req_cat or "None").lower()
+    
+    fallback_recipe = None
+    for (k1, k2, kcat), recipe in OPEN_WORLD_REACTIONS.items():
+        if sorted([k1, k2]) == target_pair:
+            kcat_norm = kcat.lower()
+            
+            # 1. 完全一致（最優先）
+            if kcat_norm == req_cat_norm:
+                return recipe
+            
+            # 2. 部分一致 ("acid" と "acid (酸)" などの表記ゆれ吸収)
+            if kcat_norm != "none" and req_cat_norm != "none":
+                if kcat_norm in req_cat_norm or req_cat_norm in kcat_norm:
+                    return recipe
+                    
+            # 3. 触媒不要("none")のレシピに対し、プレイヤーが余計な触媒を置いている場合の許容
+            if kcat_norm == "none":
+                fallback_recipe = recipe
+                
+    return fallback_recipe
 
 
 # ---------------------------------------------------------------------------
@@ -866,14 +936,13 @@ async def react(req: ReactRequest):
 
     if tier1_handled:
         if not products_smiles:
-            # RDKitの条件に合わない無茶な組み合わせは、副反応が暴走しタール化したものとする
             return ReactResponse(
-                status=ResultStatus.GAME_OVER,
-                message="反応条件に合わない無茶な組み合わせです。副反応が暴走しタールになりました。",
+                status=ResultStatus.NO_REACTION,
+                message="⚠️ 反応条件（光、温度、触媒など）が揃っていないか、この基質では反応しません。",
                 reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
-                reaction_type="Tar Formation", products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME)],
+                reaction_type="Condition Missing", products=[],
                 tier="tier1_fallback",
-                image_base64=generate_image_base64(TAR_SMILES)
+                image_base64=None
             )
             
         img_b64 = generate_image_base64(products_smiles[0])
@@ -964,9 +1033,8 @@ async def react(req: ReactRequest):
     # ----------------------------------------------------------------------
     # Tier 1.5 Open World Reaction Registry 判定
     # ----------------------------------------------------------------------
-    registry_key = get_reaction_key(req.reagent_1, req.reagent_2, req.catalyst)
-    if registry_key in OPEN_WORLD_REACTIONS:
-        recipe = OPEN_WORLD_REACTIONS[registry_key]
+    recipe = find_open_world_recipe(req.reagent_1, req.reagent_2, req.catalyst)
+    if recipe:
         img_b64 = generate_image_base64(recipe["product"])
         return ReactResponse(
             status=ResultStatus.SUCCESS,
