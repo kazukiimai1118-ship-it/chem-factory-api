@@ -936,98 +936,92 @@ async def react(req: ReactRequest):
 
     if tier1_handled:
         if not products_smiles:
-            return ReactResponse(
-                status=ResultStatus.NO_REACTION,
-                message="⚠️ 反応条件（光、温度、触媒など）が揃っていないか、この基質では反応しません。",
-                reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
-                reaction_type="Condition Missing", products=[],
-                tier="tier1_fallback",
-                image_base64=None
-            )
-            
-        img_b64 = generate_image_base64(products_smiles[0])
-        product_infos = [ProductInfo(smiles=smi) for smi in products_smiles]
-        
-        # レア度とフレーバーテキストの判定
-        if reaction_type_str == "Electrophilic Aromatic Substitution":
-            rarity = "UR"
-            flavor_text = "配向性のパズルを解き明かし、ついに目的のアート分子が完成した！全合成クリア！"
-        elif reaction_type_str == "Grignard Reagent Formation":
-            rarity = "SR"
-            flavor_text = "強力な求核剤、グリニャール試薬が完成した。これで炭素骨格を拡張できる。"
-        elif reaction_type_str == "Grignard Chain Extension":
-            rarity = "SSR"
-            flavor_text = "炭素鎖の延長に成功した。これでより大きな骨格を作ることができる。"
-        elif temp >= 80 and reaction_type_str == "E2 Elimination":
-            rarity = "SR"
-            flavor_text = "高温環境下での過激な脱離反応により生成。フラスコが少し焦げた。"
+            # RDKitでパース失敗・不発の場合はオープンワールド辞書(Tier 1.5)へフォールバック
+            tier1_handled = False
         else:
-            rarity = "N"
-            flavor_text = "教科書通りの安全な生成物。実験は成功だ。"
+            img_b64 = generate_image_base64(products_smiles[0])
+            product_infos = [ProductInfo(smiles=smi) for smi in products_smiles]
             
-        # クイズ情報の判定
-        quiz_question = None
-        quiz_options = None
-        quiz_correct_index = None
-        
-        if "Radical" in reaction_type_str:
-            quiz_question = "この反応で最初に発生する不安定な中間体は？"
-            quiz_options = ["カルボカチオン", "カルバニオン", "ラジカル"]
-            quiz_correct_index = 2
-        elif "Substitution" in reaction_type_str or "SN2" in reaction_type_str:
-            quiz_question = "この反応における求核剤（攻撃する側）の役割を果たしたのは？"
-            quiz_options = ["溶媒", "塩基/アニオン", "光"]
-            quiz_correct_index = 1
-        elif "Grignard" in reaction_type_str:
-            quiz_question = "この反応において非プロトン性溶媒（Aprotic）が必須な理由は？"
-            quiz_options = ["水と反応して失活するのを防ぐため", "温度を急激に上げるため", "色を綺麗にするため"]
-            quiz_correct_index = 0
-        elif "Electrophilic" in reaction_type_str:
-            quiz_question = "ベンゼン環の求電子置換反応において、AlCl3触媒の役割は？"
-            quiz_options = ["溶解度を上げるため", "求電子剤を強力に活性化するため", "ベンゼン環を直接壊すため"]
-            quiz_correct_index = 1
-        elif "Elimination" in reaction_type_str:
-            quiz_question = "脱離反応が起きやすくなる条件は？"
-            quiz_options = ["低温", "高温", "中性条件"]
-            quiz_correct_index = 1
-        
-        # パズルデータの生成
-        p_nodes, p_arrows = [], []
-        if "Radical" in reaction_type_str:
-            p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
-            p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
-        elif "Substitution" in reaction_type_str or "SN2" in reaction_type_str:
-            p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
-            p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
-        elif "Elimination" in reaction_type_str or "E2" in reaction_type_str:
-            p_nodes = ["Base", "H(β)", "C(α)", "X"]
-            p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
-        elif reaction_type_str == "Grignard Reagent Formation":
-            p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
-            p_arrows = [["Mg", "R-X"]]
-        elif reaction_type_str == "Grignard Chain Extension":
-            p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
-            p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
-        elif "Electrophilic" in reaction_type_str:
-            p_nodes = ["Benzene", "Acyl Cation", "AlCl₃", "H⁺"]
-            p_arrows = [["Benzene", "Acyl Cation"], ["Acyl Cation", "H⁺"]]
+            # レア度とフレーバーテキストの判定
+            if reaction_type_str == "Electrophilic Aromatic Substitution":
+                rarity = "UR"
+                flavor_text = "配向性のパズルを解き明かし、ついに目的のアート分子が完成した！全合成クリア！"
+            elif reaction_type_str == "Grignard Reagent Formation":
+                rarity = "SR"
+                flavor_text = "強力な求核剤、グリニャール試薬が完成した。これで炭素骨格を拡張できる。"
+            elif reaction_type_str == "Grignard Chain Extension":
+                rarity = "SSR"
+                flavor_text = "炭素鎖の延長に成功した。これでより大きな骨格を作ることができる。"
+            elif temp >= 80 and reaction_type_str == "E2 Elimination":
+                rarity = "SR"
+                flavor_text = "高温環境下での過激な脱離反応により生成。フラスコが少し焦げた。"
+            else:
+                rarity = "N"
+                flavor_text = "教科書通りの安全な生成物. 実験は成功だ。"
+                
+            # クイズ情報の判定
+            quiz_question = None
+            quiz_options = None
+            quiz_correct_index = None
+            
+            if "Radical" in reaction_type_str:
+                quiz_question = "この反応で最初に発生する不安定な中間体は？"
+                quiz_options = ["カルボカチオン", "カルバニオン", "ラジカル"]
+                quiz_correct_index = 2
+            elif "Substitution" in reaction_type_str or "SN2" in reaction_type_str:
+                quiz_question = "この反応における求核剤（攻撃する側）の役割を果たしたのは？"
+                quiz_options = ["溶媒", "塩基/アニオン", "光"]
+                quiz_correct_index = 1
+            elif "Grignard" in reaction_type_str:
+                quiz_question = "この反応において非プロトン性溶媒（Aprotic）が必須な理由は？"
+                quiz_options = ["水と反応して失活するのを防ぐため", "温度を急激に上げるため", "色を綺麗にするため"]
+                quiz_correct_index = 0
+            elif "Electrophilic" in reaction_type_str:
+                quiz_question = "ベンゼン環の求電子置換反応において、AlCl3触媒の役割は？"
+                quiz_options = ["溶解度を上げるため", "求電子剤を強力に活性化するため", "ベンゼン環を直接壊すため"]
+                quiz_correct_index = 1
+            elif "Elimination" in reaction_type_str:
+                quiz_question = "脱離反応が起きやすくなる条件は？"
+                quiz_options = ["低温", "高温", "中性条件"]
+                quiz_correct_index = 1
+            
+            # パズルデータの生成
+            p_nodes, p_arrows = [], []
+            if "Radical" in reaction_type_str:
+                p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
+                p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
+            elif "Substitution" in reaction_type_str or "SN2" in reaction_type_str:
+                p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
+                p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
+            elif "Elimination" in reaction_type_str or "E2" in reaction_type_str:
+                p_nodes = ["Base", "H(β)", "C(α)", "X"]
+                p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
+            elif reaction_type_str == "Grignard Reagent Formation":
+                p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
+                p_arrows = [["Mg", "R-X"]]
+            elif reaction_type_str == "Grignard Chain Extension":
+                p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
+                p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
+            elif "Electrophilic" in reaction_type_str:
+                p_nodes = ["Benzene", "Acyl Cation", "AlCl₃", "H⁺"]
+                p_arrows = [["Benzene", "Acyl Cation"], ["Acyl Cation", "H⁺"]]
 
-        return ReactResponse(
-            status=ResultStatus.SUCCESS,
-            message=f"🔬 Tier 1 ({reaction_type_str}) が成功しました！",
-            reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
-            reaction_type=reaction_type_str, products=product_infos,
-            hx_byproduct=hx_byproduct,
-            tier="tier1_rule",
-            image_base64=img_b64,
-            rarity=rarity,
-            flavor_text=flavor_text,
-            quiz_question=quiz_question,
-            quiz_options=quiz_options,
-            quiz_correct_index=quiz_correct_index,
-            puzzle_nodes=p_nodes,
-            puzzle_arrows=p_arrows
-        )
+            return ReactResponse(
+                status=ResultStatus.SUCCESS,
+                message=f"🔬 Tier 1 ({reaction_type_str}) が成功しました！",
+                reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
+                reaction_type=reaction_type_str, products=product_infos,
+                hx_byproduct=hx_byproduct,
+                tier="tier1_rule",
+                image_base64=img_b64,
+                rarity=rarity,
+                flavor_text=flavor_text,
+                quiz_question=quiz_question,
+                quiz_options=quiz_options,
+                quiz_correct_index=quiz_correct_index,
+                puzzle_nodes=p_nodes,
+                puzzle_arrows=p_arrows
+            )
         
         
     # ----------------------------------------------------------------------
@@ -1035,6 +1029,34 @@ async def react(req: ReactRequest):
     # ----------------------------------------------------------------------
     recipe = find_open_world_recipe(req.reagent_1, req.reagent_2, req.catalyst)
     if recipe:
+        r_type = (recipe.get("reaction_type") or "").lower()
+        p_nodes = recipe.get("puzzle_nodes", [])
+        p_arrows = recipe.get("puzzle_arrows", [])
+
+        # 辞書に直接パズルがない場合の動的生成
+        if not p_nodes:
+            if "radical" in r_type:
+                p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
+                p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
+            elif "substitution" in r_type or "sn2" in r_type:
+                p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
+                p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
+            elif "elimination" in r_type or "e2" in r_type:
+                p_nodes = ["Base", "H(β)", "C(α)", "X"]
+                p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
+            elif "grignard reagent formation" == r_type:
+                p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
+                p_arrows = [["Mg", "R-X"]]
+            elif "grignard chain extension" == r_type:
+                p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
+                p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
+            elif "electrophilic" in r_type or "nitration" in r_type or "friedel_crafts" in r_type:
+                p_nodes = ["Benzene", "Electrophile(E⁺)", "Catalyst", "H⁺"]
+                p_arrows = [["Benzene", "Electrophile(E⁺)"], ["Electrophile(E⁺)", "H⁺"]]
+            elif "baeyer_drewson" in r_type:
+                p_nodes = ["Acetone", "OH⁻", "CHO", "NO₂"]
+                p_arrows = [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
+
         img_b64 = generate_image_base64(recipe["product"])
         return ReactResponse(
             status=ResultStatus.SUCCESS,
@@ -1049,8 +1071,8 @@ async def react(req: ReactRequest):
             image_base64=img_b64,
             rarity="SSR" if "💊" in recipe["product_name"] else "SR",
             flavor_text=recipe.get("message", ""),
-            puzzle_nodes=recipe.get("puzzle_nodes", []),
-            puzzle_arrows=recipe.get("puzzle_arrows", [])
+            puzzle_nodes=p_nodes,
+            puzzle_arrows=p_arrows
         )
 
     # ----------------------------------------------------------------------

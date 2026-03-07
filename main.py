@@ -1358,6 +1358,34 @@ async def react(req: ReactRequest):
     # ==================================================================
     recipe = find_open_world_recipe(r1, r2, cat)
     if recipe:
+        r_type = (recipe.get("reaction_type") or "").lower()
+        p_nodes = recipe.get("puzzle_nodes", [])
+        p_arrows = recipe.get("puzzle_arrows", [])
+
+        # 辞書に直接パズルがない場合の動的生成
+        if not p_nodes:
+            if "radical" in r_type:
+                p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
+                p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
+            elif "substitution" in r_type or "sn2" in r_type:
+                p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
+                p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
+            elif "elimination" in r_type or "e2" in r_type:
+                p_nodes = ["Base", "H(β)", "C(α)", "X"]
+                p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
+            elif "grignard reagent formation" == r_type:
+                p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
+                p_arrows = [["Mg", "R-X"]]
+            elif "grignard chain extension" == r_type:
+                p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
+                p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
+            elif "electrophilic" in r_type or "nitration" in r_type or "friedel_crafts" in r_type:
+                p_nodes = ["Benzene", "Electrophile(E⁺)", "Catalyst", "H⁺"]
+                p_arrows = [["Benzene", "Electrophile(E⁺)"], ["Electrophile(E⁺)", "H⁺"]]
+            elif "baeyer_drewson" in r_type:
+                p_nodes = ["Acetone", "OH⁻", "CHO", "NO₂"]
+                p_arrows = [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
+
         return ReactResponse(
             status=ResultStatus.SUCCESS,
             message=recipe["message"],
@@ -1370,8 +1398,8 @@ async def react(req: ReactRequest):
             tier="tier1_registry",
             rarity="SSR" if "💊" in recipe["product_name"] else "SR",
             flavor_text=recipe.get("message", ""),
-            puzzle_nodes=recipe.get("puzzle_nodes", []),
-            puzzle_arrows=recipe.get("puzzle_arrows", [])
+            puzzle_nodes=p_nodes,
+            puzzle_arrows=p_arrows
         )
 
     # ==================================================================
