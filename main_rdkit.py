@@ -669,8 +669,8 @@ def generate_puzzle_graph(smiles1: str, smiles2: str) -> PuzzleGraph | None:
         for atom in mol.GetAtoms():
             pos = conf.GetAtomPosition(atom.GetIdx())
             symbol = atom.GetSymbol()
-            # PoCとして、炭素と水素以外（ヘテロ原子）をreactiveとしてマーク
-            is_reactive = symbol not in ["C", "H"]
+            # PoC: 水素以外の全重原子を反応点として許可する
+            is_reactive = symbol != "H"
             atoms.append(AtomInfo(
                 idx=atom.GetIdx(), 
                 symbol=symbol,
