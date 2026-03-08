@@ -198,12 +198,30 @@ OPEN_WORLD_REACTIONS = {
         "mechanism_steps": [
             {
                 "step_name": "開始反応 (Initiation)",
-                "reactants_smiles": ["Cl-Cl"],
+                "reactants_smiles": ["ClCl"],
                 "arrows": [
                     {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
                     {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
                 ],
                 "intermediates_smiles": ["[Cl]", "[Cl]"]
+            },
+            {
+                "step_name": "伝搬反応1 (Propagation 1)",
+                "reactants_smiles": ["C", "[Cl]"],
+                "arrows": [
+                    {"from": "atom_Cl", "to": "bond_C_H", "type": "fishhook"},
+                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[CH3]", "HCl"]
+            },
+            {
+                "step_name": "伝搬反応2 (Propagation 2)",
+                "reactants_smiles": ["[CH3]", "ClCl"],
+                "arrows": [
+                    {"from": "atom_C", "to": "bond_Cl_Cl", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["CCl", "[Cl]"]
             }
         ],
         "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
@@ -215,6 +233,35 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ ラジカルハロゲン化成功！エタンからクロロエタンが合成された。",
         "byproducts": ["HCl"],
         "reaction_type": "radical_halogenation",
+        "mechanism_steps": [
+            {
+                "step_name": "開始反応 (Initiation)",
+                "reactants_smiles": ["ClCl"],
+                "arrows": [
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[Cl]", "[Cl]"]
+            },
+            {
+                "step_name": "伝搬反応1 (Propagation 1)",
+                "reactants_smiles": ["CC", "[Cl]"],
+                "arrows": [
+                    {"from": "atom_Cl", "to": "bond_C_H", "type": "fishhook"},
+                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[CH2]C", "HCl"]
+            },
+            {
+                "step_name": "伝搬反応2 (Propagation 2)",
+                "reactants_smiles": ["[CH2]C", "ClCl"],
+                "arrows": [
+                    {"from": "atom_C", "to": "bond_Cl_Cl", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["CCCl", "[Cl]"]
+            }
+        ],
         "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
         "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
     },
@@ -227,6 +274,35 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ ラジカルハロゲン化成功！光エネルギーによりメタンからクロロメタンが合成された。",
         "byproducts": ["HCl"],
         "reaction_type": "radical_halogenation",
+        "mechanism_steps": [
+            {
+                "step_name": "開始反応 (Initiation)",
+                "reactants_smiles": ["ClCl"],
+                "arrows": [
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[Cl]", "[Cl]"]
+            },
+            {
+                "step_name": "伝搬反応1 (Propagation 1)",
+                "reactants_smiles": ["C", "[Cl]"],
+                "arrows": [
+                    {"from": "atom_Cl", "to": "bond_C_H", "type": "fishhook"},
+                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[CH3]", "HCl"]
+            },
+            {
+                "step_name": "伝搬反応2 (Propagation 2)",
+                "reactants_smiles": ["[CH3]", "ClCl"],
+                "arrows": [
+                    {"from": "atom_C", "to": "bond_Cl_Cl", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["CCl", "[Cl]"]
+            }
+        ],
         "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
         "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
     },
@@ -236,6 +312,35 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ ラジカルハロゲン化成功！光エネルギーによりエタンからクロロエタンが合成された。",
         "byproducts": ["HCl"],
         "reaction_type": "radical_halogenation",
+        "mechanism_steps": [
+            {
+                "step_name": "開始反応 (Initiation)",
+                "reactants_smiles": ["ClCl"],
+                "arrows": [
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[Cl]", "[Cl]"]
+            },
+            {
+                "step_name": "伝搬反応1 (Propagation 1)",
+                "reactants_smiles": ["CC", "[Cl]"],
+                "arrows": [
+                    {"from": "atom_Cl", "to": "bond_C_H", "type": "fishhook"},
+                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[CH2]C", "HCl"]
+            },
+            {
+                "step_name": "伝搬反応2 (Propagation 2)",
+                "reactants_smiles": ["[CH2]C", "ClCl"],
+                "arrows": [
+                    {"from": "atom_C", "to": "bond_Cl_Cl", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["CCCl", "[Cl]"]
+            }
+        ],
         "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
         "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
     },

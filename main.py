@@ -1134,16 +1134,25 @@ def _handle_radical_halogenation(req: ReactRequest) -> ReactResponse:
                     {"from": "bond_X_X", "to": "atom_X1", "type": "fishhook"},
                     {"from": "bond_X_X", "to": "atom_X2", "type": "fishhook"}
                 ],
-                "intermediates_smiles": ["[X]", "[X]"]
+                "intermediates_smiles": [f"[{halogen}]", f"[{halogen}]"]
             },
             {
                 "step_name": "伝搬反応1 (Propagation 1)",
-                "reactants_smiles": [req.reagent_1, "[X]"],
+                "reactants_smiles": [req.reagent_1, f"[{halogen}]"],
                 "arrows": [
-                    {"from": "atom_X", "to": "bond_R_H", "type": "fishhook"},
-                    {"from": "bond_R_H", "to": "atom_R", "type": "fishhook"}
+                    {"from": f"atom_{halogen}", "to": "bond_C_H", "type": "fishhook"},
+                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
                 ],
-                "intermediates_smiles": ["[R]", "HX"]
+                "intermediates_smiles": ["[R]", hx_display.get(halogen, "HX")]
+            },
+            {
+                "step_name": "伝搬反応2 (Propagation 2)",
+                "reactants_smiles": ["[R]", req.reagent_2],
+                "arrows": [
+                    {"from": "atom_R", "to": "bond_X_X", "type": "fishhook"},
+                    {"from": "bond_X_X", "to": f"atom_{halogen}", "type": "fishhook"}
+                ],
+                "intermediates_smiles": [product_infos[0].smiles, f"[{halogen}]"]
             }
         ],
         puzzle_nodes=["R-H", "X·", "X₂", "R·", "hν"],
