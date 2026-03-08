@@ -18,9 +18,14 @@ from enum import Enum
 from typing import Optional
 
 import httpx
+import openai
+import json
+import re
+import hashlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from mechanism_simulator import simulate_router
 
 # 実行環境で RDKit が利用可能かどうかに依存します
 try:
@@ -54,6 +59,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(simulate_router)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +105,10 @@ HF_MODEL_ID: str = os.environ.get(
 )
 HF_API_URL: str = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
 HF_TIMEOUT_SECONDS: float = 15.0
+
+# OpenAI API Configuration
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # ダミー生成物 (タール化)
 TAR_SMILES = "C1=CC=CC=C1"
@@ -944,39 +955,41 @@ async def handle_tier2_fallback(req: ReactRequest) -> ReactResponse:
     start_time_all = time.perf_counter()
     data = None
     
-    for attempt in range(max_retries + 1):
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                resp = await client.post(HF_API_URL, json={"inputs": current_prompt, "parameters": {"max_new_tokens": 1024, "temperature": 0.2 + (attempt * 0.1)}}, headers={"Authorization": f"Bearer {HF_TOKEN}"})
-            
-            elapsed = time.perf_counter() - start_time_all
-            if resp.status_code != 200:
-                raise ValueError(f"API {resp.status_code}")
+    try:
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=45.0) as client:
+                    resp = await client.post(HF_API_URL, json={"inputs": current_prompt, "parameters": {"max_new_tokens": 1024, "temperature": 0.2 + (attempt * 0.1)}}, headers={"Authorization": f"Bearer {HF_TOKEN}"})
+                
+                elapsed = time.perf_counter() - start_time_all
+                if resp.status_code != 200:
+                    raise ValueError(f"API {resp.status_code}")
 
-            raw_text = resp.json()[0]["generated_text"] if isinstance(resp.json(), list) else str(resp.json())
-            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-            if not json_match:
-                raise ValueError("No JSON block found")
+                raw_text = resp.json()[0]["generated_text"] if isinstance(resp.json(), list) else str(resp.json())
+                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                if not json_match:
+                    raise ValueError("No JSON block found")
 
-            data = json.loads(json_match.group())
-            if "mechanism_steps" not in data or "final_product_name" not in data:
-                raise ValueError("Incomplete JSON schema (missing mechanism_steps or final_product_name)")
-            
-            # 成功時
-            save_reaction_cache(r1, r2, cat, data)
-            break
-        except Exception as e:
-            logger.warning(f"LLM Attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries:
-                current_prompt = (
-                    f"{base_prompt}\n\n"
-                    f"### PREVIOUS Erroneous Response ###\n{raw_text if 'raw_text' in locals() else 'None'}\n\n"
-                    f"### ERROR ###\n{str(e)}\n\n"
-                    f"指定されたスキーマに従って、有効なJSONのみを再出力してください。"
-                )
-                continue
-            else:
-                return _tier2_error_response(req, f"LLM failed after retries: {e}")
+                data = json.loads(json_match.group())
+                if "mechanism_steps" not in data or "final_product_name" not in data:
+                    raise ValueError("Incomplete JSON schema (missing mechanism_steps or final_product_name)")
+                
+                # 成功時
+                save_reaction_cache(r1, r2, cat, data)
+                break
+            except Exception as e:
+                logger.warning(f"LLM Attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries:
+                    current_prompt = (
+                        f"{base_prompt}\n\n"
+                        f"### PREVIOUS Erroneous Response ###\n{raw_text if 'raw_text' in locals() else 'None'}\n\n"
+                        f"### ERROR ###\n{str(e)}\n\n"
+                        f"指定されたスキーマに従って、有効なJSONのみを再出力してください。"
+                    )
+                    continue
+                else:
+                    return _tier2_error_response(req, f"LLM failed after retries: {e}")
+        
         m_steps = data.get("mechanism_steps", [])
         
         # 各ステップに PuzzleGraph を付与
@@ -1378,6 +1391,67 @@ async def react(req: ReactRequest):
     # ----------------------------------------------------------------------
     logger.info(f"Tier 1未対応 → Tier 2へ: {req.reagent_1} + {req.reagent_2}")
     return await handle_tier2_fallback(req)
+
+# --- New Reaction Prediction API ---
+
+class PredictReactionRequest(BaseModel):
+    reagent_1_smiles: str
+    reagent_2_smiles: str
+
+class PredictReactionResponse(BaseModel):
+    reacts: bool
+    target_smiles: Optional[str] = None
+    reaction_name: Optional[str] = None
+    reason: str
+
+@app.post("/predict_reaction", response_model=PredictReactionResponse)
+async def predict_reaction_endpoint(req: PredictReactionRequest):
+    r1, r2 = req.reagent_1_smiles, req.reagent_2_smiles
+    logger.info(f"Reaction Prediction requested: {r1} + {r2}")
+
+    if not OPENAI_API_KEY:
+        return PredictReactionResponse(
+            reacts=False,
+            reason="OpenAI API Key is not configured."
+        )
+
+    system_prompt = "You are a world-class organic chemist. Determine if two molecules will react under standard laboratory conditions. Output only JSON."
+    user_prompt = f"""
+Determine if these two molecules (SMILES) react significantly:
+Reagent 1: {r1}
+Reagent 2: {r2}
+
+Consider standard organic chemistry (SN1, SN2, E1, E2, Addition, Substitution, etc.).
+If they react, provide the main product SMILES and the reaction name.
+If they don't react (e.g. methane + methane, stable molecules), explain why.
+
+Output JSON Format:
+{{
+  "reacts": true/false,
+  "target_smiles": "SMILES of result or null",
+  "reaction_name": "Name of reaction or null",
+  "reason": "Clear explanation in Japanese"
+}}
+"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        data = json.loads(response.choices[0].message.content)
+        return PredictReactionResponse(**data)
+    except Exception as e:
+        logger.error(f"OpenAI error: {e}")
+        return PredictReactionResponse(
+            reacts=False,
+            reason=f"AI 推論エラー: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
