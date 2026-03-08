@@ -769,6 +769,7 @@ class ResultStatus(str, Enum):
     SUCCESS = "success"
     NO_REACTION = "no_reaction"
     GAME_OVER = "game_over"
+    ERROR = "error"
 
 
 class ProductInfo(BaseModel):
@@ -1988,14 +1989,14 @@ async def _handle_tier2_ai_fallback(req: ReactRequest) -> ReactResponse:
     llm_result = await _call_llm_structured_inference(r1, r2, cat)
 
     if not llm_result.get("success"):
-        logger.error(f"Tier 2 LLM failed: {llm_result.get('error')} → タール化")
+        logger.error(f"Tier 2 LLM failed: {llm_result.get('error')} → ERROR")
         return ReactResponse(
-            status=ResultStatus.GAME_OVER,
-            message=f"💀 AI 推論失敗: {llm_result.get('error')}\n反応が制御不能になりタール化しました。",
+            status=ResultStatus.ERROR,
+            message=f"📡 サーバー起動中または AI 推論エラー: {llm_result.get('error')}\n数秒後にもう一度お試しください。",
             reagent_1_smiles=r1,
             reagent_2_smiles=r2,
             reaction_type="tier2_error",
-            products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME, carbon_class="N/A", reaction_type="tar")],
+            products=[],
             tier="tier2_ai_error"
         )
 
@@ -2068,6 +2069,8 @@ def _tier2_mock_response(req: ReactRequest) -> ReactResponse:
 class PredictReactionRequest(BaseModel):
     reagent_1_smiles: str
     reagent_2_smiles: str
+    catalyst: Optional[str] = None
+    condition_light: bool = False
 
 class PredictReactionResponse(BaseModel):
     reacts: bool
@@ -2078,7 +2081,9 @@ class PredictReactionResponse(BaseModel):
 @app.post("/predict_reaction", response_model=PredictReactionResponse)
 async def predict_reaction_endpoint(req: PredictReactionRequest):
     r1, r2 = req.reagent_1_smiles, req.reagent_2_smiles
-    logger.info(f"Reaction Prediction requested: {r1} + {r2}")
+    cat = req.catalyst or "None"
+    light = "UV Light (hν)" if req.condition_light else "Dark"
+    logger.info(f"Reaction Prediction requested (AI): {r1} + {r2} (Cat: {cat}, Light: {light})")
 
     if not OPENAI_API_KEY:
         return PredictReactionResponse(
@@ -2088,15 +2093,17 @@ async def predict_reaction_endpoint(req: PredictReactionRequest):
         
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-    system_prompt = "You are a world-class organic chemist. Determine if two molecules will react under standard laboratory conditions. Output only JSON."
+    system_prompt = "You are a world-class organic chemist. Determine if two molecules will react under specific conditions. Output only JSON."
     user_prompt = f"""
-Determine if these two molecules (SMILES) react significantly:
+Determine if these two molecules (SMILES) react significantly under these conditions:
 Reagent 1: {r1}
 Reagent 2: {r2}
+Catalyst: {cat}
+Light Condition: {light}
 
 Consider standard organic chemistry (SN1, SN2, E1, E2, Addition, Substitution, etc.).
 If they react, provide the main product SMILES and the reaction name.
-If they don't react (e.g. methane + methane, stable molecules), explain why.
+If they don't react (e.g. methane + methane, stable molecules), explain why in Japanese.
 
 Output JSON Format:
 {{
@@ -2123,7 +2130,7 @@ Output JSON Format:
         logger.error(f"OpenAI error: {e}")
         return PredictReactionResponse(
             reacts=False,
-            reason=f"AI 推論エラー: {str(e)}"
+            reason=f"AI 推論一時停止中: {str(e)}"
         )
 
 

@@ -663,6 +663,7 @@ class ResultStatus(str, Enum):
     SUCCESS = "success"
     NO_REACTION = "no_reaction"
     GAME_OVER = "game_over"
+    ERROR = "error"
 
 class ProductInfo(BaseModel):
     smiles: str
@@ -1025,12 +1026,13 @@ async def handle_tier2_fallback(req: ReactRequest) -> ReactResponse:
         return _tier2_error_response(req, str(e))
 
 def _tier2_error_response(req: ReactRequest, error_msg: str) -> ReactResponse:
+    # タイムアウトやAPIキーなし時は GAME_OVER = タール化 ではなく ERROR を返して再試行を促す
     return ReactResponse(
-        status=ResultStatus.GAME_OVER,
-        message=f"💀 AI 推論失敗: {error_msg}\nタール化しました。",
+        status=ResultStatus.ERROR,
+        message=f"📡 通信エラーまたはコールドスタート: {error_msg}\nサーバーが準備中です。数秒後にもう一度お試しください。",
         reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
         reaction_type="tier2_error",
-        products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME)],
+        products=[],
         tier="tier2_error"
     )
 
@@ -1404,6 +1406,8 @@ async def react(req: ReactRequest):
 class PredictReactionRequest(BaseModel):
     reagent_1_smiles: str
     reagent_2_smiles: str
+    catalyst: Optional[str] = None
+    condition_light: bool = False
 
 class PredictReactionResponse(BaseModel):
     reacts: bool
@@ -1418,7 +1422,10 @@ async def predict_reaction_endpoint(req: PredictReactionRequest):
     """
     r1 = req.reagent_1_smiles
     r2 = req.reagent_2_smiles
-    logger.info(f"Refined Local Prediction: {r1} + {r2}")
+    cat = req.catalyst or "None"
+    light = req.condition_light
+    
+    logger.info(f"Refined Local Prediction: {r1} + {r2} (Cat: {cat}, Light: {light})")
     
     # 1. 同じ物質の衝突は即座に弾く
     if r1 == r2:
@@ -1429,28 +1436,28 @@ async def predict_reaction_endpoint(req: PredictReactionRequest):
 
     # 2. 実際のレシピデータとの照合
     try:
-        # すでにトップレベルやマージ処理で OPEN_WORLD_REACTIONS は準備されている
-        c1 = _canon(r1); c2 = _canon(r2)
-        target_pair = sorted([c1, c2])
+        # find_open_world_recipe は触媒や条件の柔軟なマッチングを行う
+        recipe = find_open_world_recipe(r1, r2, cat)
         
-        found_recipe = None
-        # 全触媒条件を探索
-        for (k1, k2, kcat), recipe in OPEN_WORLD_REACTIONS.items():
-            if sorted([k1, k2]) == target_pair:
-                found_recipe = recipe
-                break
+        # 特殊条件のチェック (例: ラジカルハロゲン化は光が必要)
+        if recipe and recipe.get("reaction_type") == "radical_halogenation":
+            if not light:
+                return PredictReactionResponse(
+                    reacts=False,
+                    reason="この反応（ラジカルハロゲン化）の進行には、光（UV Lamp）の照射が必要です。"
+                )
 
-        if found_recipe:
+        if recipe:
             return PredictReactionResponse(
                 reacts=True,
-                target_smiles=found_recipe["product"],
-                reaction_name=found_recipe.get("product_name", found_recipe.get("reaction_type", "既知の反応"))
+                target_smiles=recipe["product"],
+                reaction_name=recipe.get("product_name", recipe.get("reaction_type", "既知の反応"))
             )
             
     except Exception as e:
         logger.error(f"Prediction error: {e}")
 
-    # 3. レシピに該当しない場合はタール化
+    # 3. レシピに該当しない場合はタール化 (predict段階では reacts=False)
     return PredictReactionResponse(
         reacts=False,
         reason="この組み合わせでは有効な反応が起きず、タール化します。"
