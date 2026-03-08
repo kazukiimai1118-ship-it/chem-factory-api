@@ -1088,17 +1088,15 @@ async def root():
 
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
-    # ==================================================================
-    # カスタム触媒レシピ (新機能) - mechanisms_data.py から取得
-    # ==================================================================
-    from mechanisms_data import OPEN_WORLD_REACTIONS, get_reaction_key
-    
+    import copy
     r1, r2 = req.reagent_1, req.reagent_2
     cat = req.catalyst or ""
-    key = get_reaction_key(r1, r2, cat)
     
-    if key in OPEN_WORLD_REACTIONS:
-        recipe = OPEN_WORLD_REACTIONS[key]
+    # 【修正】外部ファイルを直接インポートするのをやめ、優秀な検索関数を使う
+    recipe = find_open_world_recipe(r1, r2, cat)
+    
+    if recipe:
+        recipe = copy.deepcopy(recipe) # 破壊防止
         p_smi = recipe["product"]
         p_name = recipe.get("product_name", "Unknown Product")
         msg = recipe.get("message", "Reaction successful!")
@@ -1106,16 +1104,16 @@ async def react(req: ReactRequest):
         byprods = recipe.get("byproducts", [])
         
         m_steps = recipe.get("mechanism_steps", [])
-        # 各ステップに PuzzleGraph を付与し、IDを変換する
+        # 各ステップに PuzzleGraph を付与し、IDを変換する
         for step in m_steps:
-                if "intermediates_smiles" in step and step["intermediates_smiles"]:
-                    smi = ".".join(step["intermediates_smiles"])
-                    pg, m_map = generate_puzzle_graph(smi)
-                    step["puzzle_graph"] = pg
-                    # IDの変換 (atom_N -> atom_idx 等)
-                    mol = Chem.MolFromSmiles(smi)
-                    if mol:
-                        translate_mechanism_steps([step], m_map, mol)
+            if "intermediates_smiles" in step and step["intermediates_smiles"]:
+                smi = ".".join(step["intermediates_smiles"])
+                pg, m_map = generate_puzzle_graph(smi)
+                step["puzzle_graph"] = pg
+                # IDの変換 (atom_N -> atom_idx 等)
+                mol = Chem.MolFromSmiles(smi)
+                if mol:
+                    translate_mechanism_steps([step], m_map, mol)
 
         prs = [ProductInfo(smiles=p_smi, name=p_name, carbon_class="N/A", reaction_type=rxn_type)]
         return ReactResponse(
