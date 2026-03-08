@@ -29,6 +29,7 @@ from enum import Enum
 from typing import Optional, Any
 
 import httpx
+import openai
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -2061,7 +2062,73 @@ def _tier2_mock_response(req: ReactRequest) -> ReactResponse:
 # =====================================================================
 # Run
 # =====================================================================
+
+# --- New Reaction Prediction API ---
+
+class PredictReactionRequest(BaseModel):
+    reagent_1_smiles: str
+    reagent_2_smiles: str
+
+class PredictReactionResponse(BaseModel):
+    reacts: bool
+    target_smiles: Optional[str] = None
+    reaction_name: Optional[str] = None
+    reason: str
+
+@app.post("/predict_reaction", response_model=PredictReactionResponse)
+async def predict_reaction_endpoint(req: PredictReactionRequest):
+    r1, r2 = req.reagent_1_smiles, req.reagent_2_smiles
+    logger.info(f"Reaction Prediction requested: {r1} + {r2}")
+
+    if not OPENAI_API_KEY:
+        return PredictReactionResponse(
+            reacts=False,
+            reason="OpenAI API Key is not configured."
+        )
+        
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+    system_prompt = "You are a world-class organic chemist. Determine if two molecules will react under standard laboratory conditions. Output only JSON."
+    user_prompt = f"""
+Determine if these two molecules (SMILES) react significantly:
+Reagent 1: {r1}
+Reagent 2: {r2}
+
+Consider standard organic chemistry (SN1, SN2, E1, E2, Addition, Substitution, etc.).
+If they react, provide the main product SMILES and the reaction name.
+If they don't react (e.g. methane + methane, stable molecules), explain why.
+
+Output JSON Format:
+{{
+  "reacts": true/false,
+  "target_smiles": "SMILES of result or null",
+  "reaction_name": "Name of reaction or null",
+  "reason": "Clear explanation in Japanese"
+}}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        data = json.loads(response.choices[0].message.content)
+        return PredictReactionResponse(**data)
+    except Exception as e:
+        logger.error(f"OpenAI error: {e}")
+        return PredictReactionResponse(
+            reacts=False,
+            reason=f"AI 推論エラー: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
