@@ -674,36 +674,11 @@ def detect_reaction_type(
     if catalyst_alcl3 and ("c1ccccc1" in reagent_1 or "c1ccccc1" in reagent_2):
         return "eas_acylation"
 
-    # 求核剤/塩基 + ハロアルカン → 置換 or 脱離
+    #求核剤/塩基 + ハロアルカン -> 置換 or 脱離
     if reagent_2 in NUCLEOPHILE_BASE_MAP:
         haloalkane = parse_haloalkane_smiles(reagent_1)
         if haloalkane is not None:
             return "substitution_elimination"
-
-    # === インディゴルート反応 ===
-    # ニトロ化: ベンゼン + HNO3 (H2SO4触媒) → ニトロベンゼン
-    if reagent_2 == "HNO3" and (reagent_1 in ("c1ccccc1", "C1=CC=CC=C1")):
-        return "nitration"
-    
-    # 還元: ニトロベンゼン + Sn/HCl → アニリン
-    if reagent_1 == "NITROBENZENE" and reagent_2 == "Sn_HCl":
-        return "reduction_nitro"
-    
-    # Vilsmeier-Haack: アニリン + DMF (POCl3触媒) → 2-アミノベンズアルデヒド
-    if reagent_1 == "ANILINE" and reagent_2 == "DMF":
-        return "vilsmeier_haack"
-    
-    # ジアゾ化: 2-アミノベンズアルデヒド + NaNO2 → 2-ニトロベンズアルデヒド
-    if reagent_1 == "2_AMINOBENZALDEHYDE" and reagent_2 == "NaNO2":
-        return "diazotization"
-    
-    # アルドール縮合: 2-ニトロベンズアルデヒド + アセトン → インドキシル前駆体
-    if reagent_1 == "2_NITROBENZALDEHYDE" and reagent_2 == "ACETONE":
-        return "aldol_condensation"
-    
-    # 酸化二量化: インドキシル + 空気 → インディゴ
-    if reagent_1 == "INDOXYL" and reagent_2 == "AIR_O2":
-        return "oxidative_dimerization"
 
     return "unknown"
 
@@ -939,390 +914,8 @@ async def root():
 # ---------------------------------------------------------------------------
 # Open World Reaction Registry (Tier 1.5)
 # ---------------------------------------------------------------------------
-def get_reaction_key(r1: str, r2: str, catalyst: str = None) -> tuple[str, str, str]:
-    sorted_r = sorted([r1, r2])
-    cat = catalyst if catalyst else "None"
-    return (sorted_r[0], sorted_r[1], cat)
-
-OPEN_WORLD_REACTIONS = {
-    # --------------------------------------------------------
-    # チュートリアル救済: ラジカルハロゲン化 (光条件なしでも成功させる)
-    # --------------------------------------------------------
-    get_reaction_key("C", "ClCl", "None"): {
-        "product": "CCl",
-        "product_name": "クロロメタン",
-        "message": "✨ ラジカルハロゲン化成功！メタンからクロロメタンが合成された。",
-        "byproducts": ["HCl"],
-        "reaction_type": "radical_halogenation",
-        "mechanism_steps": [
-            {
-                "step_name": "開始反応 (Initiation)",
-                "reactants_smiles": ["Cl-Cl"],
-                "arrows": [
-                    {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
-                    {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
-                ],
-                "intermediates_smiles": ["[Cl]", "[Cl]"]
-            },
-            {
-                "step_name": "伝搬反応1 (Propagation 1)",
-                "reactants_smiles": ["C-H", "[Cl]"],
-                "arrows": [
-                    {"from": "atom_Cl", "to": "bond_C_H", "type": "fishhook"},
-                    {"from": "bond_C_H", "to": "atom_C", "type": "fishhook"}
-                ],
-                "intermediates_smiles": ["[CH3]", "HCl"]
-            }
-        ],
-        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
-        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
-    },
-    get_reaction_key("CC", "ClCl", "None"): {
-        "product": "CCCl",
-        "product_name": "クロロエタン",
-        "message": "✨ ラジカルハロゲン化成功！エタンからクロロエタンが合成された。",
-        "byproducts": ["HCl"],
-        "reaction_type": "radical_halogenation",
-        "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
-        "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
-    },
-    # --------------------------------------------------------
-    # インディゴ合成 (Root)
-    # --------------------------------------------------------
-    get_reaction_key("O=[N+]([O-])c1ccccc1C=O", "CC(=O)C", "NaOH"): {
-        "product": "O=C1Nc2ccccc2C1=C1C(=O)Nc2ccccc21",
-        "product_name": "🔵 インディゴ",
-        "message": "✨ Baeyer-Drewson反応と酸化二量化が連続進行！伝説の染料「インディゴ」が完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "baeyer_drewson_condensation"
-    },
-    # --------------------------------------------------------
-    # Tier 1: アスピリンルート
-    # --------------------------------------------------------
-    get_reaction_key("Oc1ccccc1", "O=C=O", "NaOH"): {
-        "product": "OC1=CC=CC=C1C(=O)O",
-        "product_name": "サリチル酸",
-        "message": "✨ コルベ・シュミット反応成功！フェノールからサリチル酸を合成した。",
-        "byproducts": [],
-        "reaction_type": "kolbe_schmitt"
-    },
-    get_reaction_key("OC1=CC=CC=C1C(=O)O", "CC(=O)OC(C)=O", "H2SO4"): {
-        "product": "CC(=O)Oc1ccccc1C(=O)O",
-        "product_name": "💊 アスピリン",
-        "message": "✨ エステル化成功！世界初の人工合成医薬品「アスピリン」が完成した！",
-        "byproducts": ["CC(=O)O"], # 酢酸
-        "reaction_type": "esterification",
-        "puzzle_nodes": ["Phenol-OH", "Carbonyl-C", "Carbonyl-O"],
-        "puzzle_arrows": [["Phenol-OH", "Carbonyl-C"], ["Carbonyl-C", "Carbonyl-O"]]
-    },
-    # --------------------------------------------------------
-    # Tier 1: パラセタモールルート
-    # --------------------------------------------------------
-    get_reaction_key("Oc1ccccc1", "HNO3", "Acid (酸)"): {
-        "product": "O=[N+]([O-])c1ccc(O)cc1",
-        "product_name": "p-ニトロフェノール",
-        "message": "✨ ニトロ化成功！フェノールからp-ニトロフェノールを合成した。",
-        "byproducts": ["H2O"],
-        "reaction_type": "nitration"
-    },
-    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Pd/C"): {
-        "product": "Nc1ccc(O)cc1",
-        "product_name": "p-アミノフェノール",
-        "message": "✨ 接触還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
-        "byproducts": ["H2O", "H2O"],
-        "reaction_type": "reduction"
-    },
-    get_reaction_key("O=[N+]([O-])c1ccc(O)cc1", "[H][H]", "Sn (スズ)"): {
-        "product": "Nc1ccc(O)cc1",
-        "product_name": "p-アミノフェノール",
-        "message": "✨ スズ還元成功！p-ニトロフェノールからp-アミノフェノールを合成した。",
-        "byproducts": ["H2O", "H2O"],
-        "reaction_type": "reduction"
-    },
-    get_reaction_key("Nc1ccc(O)cc1", "CC(=O)OC(C)=O", "None"): {
-        "product": "CC(=O)Nc1ccc(O)cc1",
-        "product_name": "💊 パラセタモール",
-        "message": "✨ アミド化成功！解熱鎮痛薬「パラセタモール」が完成した！",
-        "byproducts": ["CC(=O)O"], # 酢酸
-        "reaction_type": "amidation"
-    },
-    # --------------------------------------------------------
-    # Tier 2: クマリンルート
-    # --------------------------------------------------------
-    get_reaction_key("Oc1ccccc1", "C(Cl)(Cl)Cl", "NaOH"): {
-        "product": "O=Cc1ccccc1O",
-        "product_name": "サリチルアルデヒド",
-        "message": "✨ Reimer-Tiemann反応成功！フェノールのオルト位がホルミル化された。",
-        "byproducts": ["NaCl"],
-        "reaction_type": "reimer_tiemann"
-    },
-    get_reaction_key("O=Cc1ccccc1O", "CC(=O)OC(C)=O", "NaOH"): {
-        "product": "O=C1C=Cc2ccccc2O1",
-        "product_name": "🌸 クマリン",
-        "message": "✨ Perkin反応とラクトン化が連続進行！甘い香りのクマリンが完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "perkin_condensation"
-    },
-    # Base触媒の表記ゆれ用
-    get_reaction_key("O=Cc1ccccc1O", "CC(=O)OC(C)=O", "Base"): {
-        "product": "O=C1C=Cc2ccccc2O1",
-        "product_name": "🌸 クマリン",
-        "message": "✨ Perkin反応とラクトン化が連続進行！甘い香りのクマリンが完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "perkin_condensation"
-    },
-    # --------------------------------------------------------
-    # Tier 2: リドカインルート
-    # --------------------------------------------------------
-    get_reaction_key("Cc1cccc(C)c1N", "ClCC(=O)Cl", "None"): {
-        "product": "Cc1cccc(C)c1NC(=O)CCl",
-        "product_name": "クロロアセトアミド中間体",
-        "message": "✨ アミド結合形成！リドカイン合成の第一段階をクリアした。",
-        "byproducts": ["HCl"],
-        "reaction_type": "amidation"
-    },
-    get_reaction_key("Cc1cccc(C)c1NC(=O)CCl", "CCNCC", "None"): {
-        "product": "CCN(CC)CC(=O)Nc1c(C)cccc1C",
-        "product_name": "💊 リドカイン",
-        "message": "✨ S_N2反応成功！優れた局所麻酔薬「リドカイン」が完成した！",
-        "byproducts": ["HCl"],
-        "reaction_type": "sn2_substitution",
-        "puzzle_nodes": ["-NH₂ (求核剤)", "CH₂ (α炭素)", "-Cl (脱離基)"],
-        "puzzle_arrows": [["-NH₂ (求核剤)", "CH₂ (α炭素)"], ["CH₂ (α炭素)", "-Cl (脱離基)"]]
-    },
-    # --------------------------------------------------------
-    # Tier 2: フルオレセインルート
-    # --------------------------------------------------------
-    get_reaction_key("O=C1OC(=O)c2ccccc12", "Oc1cc(O)ccc1", "ZnCl2"): {
-        "product": "O=C1OC2(c3ccccc13)c4ccc(O)cc4Oc5cc(O)ccc25",
-        "product_name": "☢️ フルオレセイン",
-        "message": "✨ Friedel-Crafts型縮合成功！ブラックライトで鮮やかに光る「フルオレセイン」が完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "friedel_crafts_condensation"
-    },
-    # --------------------------------------------------------
-    # Tier 3: イブプロフェンルート
-    # --------------------------------------------------------
-    get_reaction_key("CC(C)Cc1ccccc1", "CC(=O)Cl", "AlCl3"): {
-        "product": "CC(C)Cc1ccc(C(C)=O)cc1",
-        "product_name": "p-イソブチルアセトフェノン",
-        "message": "✨ Friedel-Craftsアシル化成功！イブプロフェン合成の骨格ができた。",
-        "byproducts": ["HCl"],
-        "reaction_type": "friedel_crafts_acylation"
-    },
-    get_reaction_key("CC(C)Cc1ccc(C(C)=O)cc1", "[C-]#[O+]", "Pd"): {
-        "product": "CC(C)Cc1ccc(C(C)C(=O)O)cc1",
-        "product_name": "💊 イブプロフェン",
-        "message": "✨ BHCプロセスによるアトムエコノミーの高い反応が進行！鎮痛薬「イブプロフェン」が完成した！",
-        "byproducts": [],
-        "reaction_type": "catalytic_carbonylation"
-    },
-    # --------------------------------------------------------
-    # Tier 3: サッカリンルート
-    # --------------------------------------------------------
-    get_reaction_key("Cc1ccccc1", "O=S(=O)(Cl)O", "None"): {
-        "product": "Cc1ccccc1S(=O)(=O)Cl",
-        "product_name": "o-トルエンスルホニルクロリド",
-        "message": "✨ クロロスルホン化進行。オルト置換体を抽出した。",
-        "byproducts": ["H2O"],
-        "reaction_type": "chlorosulfonation"
-    },
-    get_reaction_key("Cc1ccccc1S(=O)(=O)Cl", "N", "None"): {
-        "product": "Cc1ccccc1S(N)(=O)=O",
-        "product_name": "o-トルエンスルホンアミド",
-        "message": "✨ アミド化成功。閉環への準備が整った。",
-        "byproducts": ["HCl"],
-        "reaction_type": "amidation"
-    },
-    get_reaction_key("Cc1ccccc1S(N)(=O)=O", "O=[Mn](=O)(=O)[O-]", "Acid"): {
-        "product": "O=C1NS(=O)(=O)c2ccccc12",
-        "product_name": "🍬 サッカリン",
-        "message": "✨ メチル基の酸化と分子内閉環が連続進行！人工甘味料「サッカリン」が完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "oxidation_cyclization"
-    },
-    # Acid触媒の表記ゆれ用
-    get_reaction_key("Cc1ccccc1S(N)(=O)=O", "O=[Mn](=O)(=O)[O-]", "Acid (酸)"): {
-        "product": "O=C1NS(=O)(=O)c2ccccc12",
-        "product_name": "🍬 サッカリン",
-        "message": "✨ メチル基の酸化と分子内閉環が連続進行！人工甘味料「サッカリン」が完成した！",
-        "byproducts": ["H2O"],
-        "reaction_type": "oxidation_cyclization"
-    },
-    # --------------------------------------------------------
-    # Tier 4: ナイロン6,6
-    # --------------------------------------------------------
-    get_reaction_key("O=C(Cl)CCCCC(=O)Cl", "NCCCCCCN", "None"): {
-        "product": "O=C(CCCCC(=O)NCCCCCCN)NCCCCCCN",
-        "product_name": "🧵 ナイロン6,6",
-        "message": "✨ 重縮合反応成功！単一の分子から「物質(マテリアル)」へのパラダイムシフト、「ナイロン6,6」が完成した！",
-        "byproducts": ["HCl"],
-        "reaction_type": "interfacial_polycondensation"
-    },
-    # --------------------------------------------------------
-    # Tier 4: キュバンルート
-    # --------------------------------------------------------
-    get_reaction_key("O=C1C=CC=C1", "O=C1C=CC=C1", "UV Lamp"): {
-        "product": "O=C1C2C3C4C1C5C2C3C45",
-        "product_name": "ケージドジオン中間体",
-        "message": "✨ [2+2]付加環化成功！ひずみの大きいケージ骨格が形成された。",
-        "byproducts": [],
-        "reaction_type": "photochemical_cycloaddition"
-    },
-    # 👇 ここに get_reaction_key を追加します
-    get_reaction_key("O=C1C2C3C4C1C5C2C3C45", "NaOH", "Heat"): {
-        "product": "C12C3C4C1C5C2C3C45",
-        "product_name": "🧊 キュバン",
-        "message": "✨ Favorskii転位と脱炭酸が完了！プラトンの立体、究極のひずみ分子「キュバン」が完成した！",
-        "byproducts": ["O=C=O"],
-        "reaction_type": "favorskii_rearrangement"
-    },
-    # --------------------------------------------------------
-    # Tier 5: ナノプシャン (Final)
-    # --------------------------------------------------------
-    get_reaction_key("c1ccccc1I", "C#Cc1ccc(C#C)cc1", "Pd/Cu"): {
-        "product": "c1ccccc1C#Cc2ccc(C#C)cc2",
-        "product_name": "ナノプシャン上半身",
-        "message": "✨ Sonogashiraカップリング成功！頭部と胴体が結合し、ナノプシャンの上半身が完成した。",
-        "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
-    },
-    get_reaction_key("Ic1cc(I)ccc1", "CCC(CC)C#C", "Pd/Cu"): {
-        "product": "CCC(CC)C#Cc1cc(I)ccc1",
-        "product_name": "ナノプシャン下半身",
-        "message": "✨ Sonogashiraカップリング成功！骨盤と脚部が結合し、ナノプシャンの下半身が完成した。",
-        "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
-    },
-    get_reaction_key("c1ccccc1C#Cc2ccc(C#C)cc2", "CCC(CC)C#Cc1cc(I)ccc1", "Pd/Cu"): {
-        "product": "c1ccccc1C#Cc2ccc(C#Cc3cc(C#CC(CC)CC)ccc3)cc2",
-        "product_name": "🕺 ナノプシャン",
-        "message": "✨ 究極のクロスカップリングが完了！！分子サイズの小人「ナノプシャン」が誕生した！",
-        "byproducts": ["HI"],
-        "reaction_type": "sonogashira_coupling"
-    },
-    # --------------------------------------------------------
-    # 保護・脱保護ルート (p-ニトロアニリン)
-    # --------------------------------------------------------
-    get_reaction_key("Nc1ccccc1", "CC(=O)OC(C)=O", "None"): {
-        "product": "CC(=O)Nc1ccccc1",
-        "product_name": "アセトアニリド",
-        "message": "✨ 保護成功！アミンをアセチル基でガードし、官能基の反応性を制御可能にした。",
-        "byproducts": ["CC(=O)O"],
-        "reaction_type": "protection_amine"
-    },
-    get_reaction_key("CC(=O)Nc1ccccc1", "HNO3", "Acid"): {
-        "product": "CC(=O)Nc1ccc([N+](=O)[O-])cc1",
-        "product_name": "p-ニトロアセトアニリド",
-        "message": "✨ ニトロ化成功！保護基のおかげでアミノ基の酸化を防ぎ、パラ位にニトロ基が導入された。",
-        "byproducts": ["H2O"],
-        "reaction_type": "nitration"
-    },
-    get_reaction_key("CC(=O)Nc1ccc([N+](=O)[O-])cc1", "O", "Acid"): {
-        "product": "Nc1ccc([N+](=O)[O-])cc1",
-        "product_name": "p-ニトロアニリン",
-        "message": "🔓 脱保護成功！！アミドを加水分解し、保護されていたアミンが復活した。鮮やかな黄色のp-ニトロアニリンが完成！",
-        "byproducts": ["CC(=O)O"],
-        "reaction_type": "deprotection_amine"
-    },
-    # --------------------------------------------------------
-    # 保護・脱保護ルート (ケトン保護)
-    # --------------------------------------------------------
-    get_reaction_key("CC(=O)c1ccc(C(=O)O)cc1", "OCCO", "Acid"): {
-        "product": "O=C(O)c1ccc(C2(C)OCCO2)cc1",
-        "product_name": "アセタール保護カルボン酸",
-        "message": "✨ 保護成功！ケトンを環状アセタールとしてガード。これでLiAlH4の攻撃から身を守れるぞ！",
-        "byproducts": ["H2O"],
-        "reaction_type": "protection_ketone"
-    },
-    get_reaction_key("O=C(O)c1ccc(C2(C)OCCO2)cc1", "LiAlH4", "None"): {
-        "product": "OCCc1ccc(C2(C)OCCO2)cc1",
-        "product_name": "アセタール保護アルコール",
-        "message": "✨ 還元成功！ケトンは無傷のまま、カルボキシ基だけが選択的にアルコールへ還元された。",
-        "byproducts": [],
-        "reaction_type": "reduction"
-    },
-    get_reaction_key("OCCc1ccc(C2(C)OCCO2)cc1", "O", "Acid"): {
-        "product": "CC(=O)c1ccc(CO)cc1",
-        "product_name": "4-アセチルベンジルアルコール",
-        "message": "🔓 脱保護成功！！酸による加水分解でアセタールが外れ、ケトンが鮮やかに再出現した！多官能基分子の選択的合成に勝利！",
-        "byproducts": ["OCCO"],
-        "reaction_type": "deprotection_ketone"
-    },
-    # --------------------------------------------------------
-    # 保護・脱保護ルート (アルコール保護/TMS)
-    # --------------------------------------------------------
-    get_reaction_key("Oc1ccc(Br)cc1", "C[Si](C)(C)Cl", "Base"): {
-        "product": "C[Si](C)(C)Oc1ccc(Br)cc1",
-        "product_name": "TMS保護ブロモベンゼン",
-        "message": "✨ 保護成功！TMS基がフェノール性OHをガード。これでMgによるグリニャール化が可能になった！",
-        "byproducts": ["HCl"],
-        "reaction_type": "protection_alcohol"
-    },
-    get_reaction_key("C[Si](C)(C)Oc1ccc(Br)cc1", "Mg", "None"): {
-        "product": "C[Si](C)(C)Oc1ccc([Mg]Br)cc1",
-        "product_name": "TMS保護グリニャール",
-        "message": "✨ グリニャール試薬調製完了。保護されたフェノールが強力な求核剤として牙を剥く！",
-        "byproducts": [],
-        "reaction_type": "grignard_preparation"
-    },
-    get_reaction_key("C[Si](C)(C)Oc1ccc([Mg]Br)cc1", "CC(=O)C", "None"): {
-        "product": "C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1",
-        "product_name": "TMS保護第三級アルコール",
-        "message": "✨ 求核付加成功！アセトンとの連結が完了し、新たな炭素-炭素結合が形成された。",
-        "byproducts": [],
-        "reaction_type": "grignard_reaction"
-    },
-    get_reaction_key("C[Si](C)(C)Oc1ccc(C(C)(C)O)cc1", "TBAF", "None"): {
-        "product": "CC(C)(O)c1ccc(O)cc1",
-        "product_name": "4-(2-ヒドロキシプロパン-2-イル)フェノール",
-        "message": "🔓 脱保護成功！！フッ化物イオン(F-)の強力な親和力でTMS基が剥ぎ取られ、ターゲット分子が出現！究極の保護基パズルを制覇！",
-        "byproducts": ["C[Si](C)(C)F"],
-        "reaction_type": "deprotection_alcohol"
-    },
-    # --------------------------------------------------------
-    # 保護・脱保護ルート (ペプチド合成/Cbz)
-    # --------------------------------------------------------
-    get_reaction_key("NC(CC(=O)O)C(=O)O", "O=C(Cl)OCc1ccccc1", "Base"): {
-        "product": "O=C(O)CC(NC(=O)OCc1ccccc1)C(=O)O",
-        "product_name": "Cbz-アスパラギン酸",
-        "message": "✨ Cbz保護成功！アミノ基がベンジルオキシカルボニル基で保護され、自己縮合を防ぐ準備が整った。",
-        "byproducts": ["HCl"],
-        "reaction_type": "protection_amine"
-    },
-    get_reaction_key("O=C(O)CC(NC(=O)OCc1ccccc1)C(=O)O", "COC(=O)C(N)Cc1ccccc1", "Acid"): {
-        "product": "COC(=O)C(Cc1ccccc1)NC(=O)C(CC(=O)O)NC(=O)OCc1ccccc1",
-        "product_name": "Cbz-アスパルテーム",
-        "message": "✨ ペプチド結合形成！2つのアミノ酸が正しく連結された。",
-        "byproducts": ["H2O"],
-        "reaction_type": "peptide_coupling"
-    },
-    get_reaction_key("COC(=O)C(Cc1ccccc1)NC(=O)C(CC(=O)O)NC(=O)OCc1ccccc1", "[H][H]", "Pd/C"): {
-        "product": "COC(=O)C(Cc1ccccc1)NC(=O)C(N)CC(=O)O",
-        "product_name": "💊 アスパルテーム",
-        "message": "🔓 脱保護成功！！水素化分解によりCbz基が外れ、人工甘味料「アスパルテーム」が完成した！",
-        "byproducts": ["Cc1ccccc1"],
-        "reaction_type": "deprotection_amine"
-    },
-    # --------------------------------------------------------
-    # 保護・脱保護ルート (アルキン保護/TMS)
-    # --------------------------------------------------------
-    get_reaction_key("O=Cc1ccc(Br)cc1", "C#C[Si](C)(C)C", "Pd/Cu"): {
-        "product": "C[Si](C)(C)C#Cc1ccc(C=O)cc1",
-        "product_name": "TMS保護アルキン",
-        "message": "✨ Sonogashiraカップリング成功！TMS基によりアルキンの二量化（ホモカップリング）が完全に防がれた。",
-        "byproducts": ["HBr"],
-        "reaction_type": "sonogashira_coupling"
-    },
-    get_reaction_key("C[Si](C)(C)C#Cc1ccc(C=O)cc1", "O=C([O-])[O-]", "None"): {
-        "product": "O=Cc1ccc(C#C)cc1",
-        "product_name": "4-エチニルベンズアルデヒド",
-        "message": "🔓 脱保護成功！！塩基処理によりTMS基が外れ、反応性の高い末端アルキンが露出した！",
-        "byproducts": ["C[Si](C)(C)O"],
-        "reaction_type": "deprotection_alkyne"
-    }
-}
-
+from mechanisms_data import OPEN_WORLD_REACTIONS, get_reaction_key
+from main_rdkit import generate_puzzle_graph, translate_mechanism_steps, generate_image_base64
 
 def find_open_world_recipe(r1: str, r2: str, req_cat: str) -> dict | None:
     """柔軟な反応辞書検索（表記ゆれ・不要な触媒の許容）"""
@@ -1352,48 +945,38 @@ def find_open_world_recipe(r1: str, r2: str, req_cat: str) -> dict | None:
 
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
-    """
-    化学反応エンドポイント (Phase 0 + Phase 1 統合)。
-
-    【Phase 0: ラジカルハロゲン化】
-      R-H + X₂ --hν→ R-X + HX
-      - reagent_1: アルカン (例: "C", "CC")
-      - reagent_2: ハロゲン分子 (例: "ClCl", "BrBr")
-      - condition_light: true
-
-    【Phase 1: 置換/脱離反応】
-      - reagent_1: ハロアルカン (例: "CCCl", "CC(Cl)C")
-      - reagent_2: 求核剤/塩基 (例: "O", "[O-]")
-      - temperature: 0-100 (60 以上 → E2 優先, 60 未満 → SN2 候補)
-      - solvent_type: "protic" or "aprotic" (aprotic + 低温 → SN2)
-    """
     # ==================================================================
-    # カスタム触媒レシピ (新機能)
+    # オープンワールド固有のレシピ判定 (Centralized in mechanisms_data.py)
     # ==================================================================
     import copy
     r1, r2 = req.reagent_1, req.reagent_2
     cat = req.catalyst or ""
-    reagents = {r1, r2}
-    
-    custom_res = None
-    if reagents == {"C", "C"} and cat.startswith("Pt"):
-        custom_res = (["C#C"], ["H2"], "✨ メタンの脱水素カップリングによりアセチレンを合成しました！", "catalytic_coupling", "アセチレン", "N/A")
-    elif reagents == {"C#C", "C#C"} and cat.startswith("Fe"):
-        custom_res = (["c1ccccc1"], [], "✨ アセチレンの三量化環化によりベンゼン環が生成されました！", "cyclotrimerization", "ベンゼン", "N/A")
-    elif reagents == {"NITROBENZENE", "HCl"} and cat.startswith("Sn"):
-        custom_res = (["ANILINE"], ["H2O"], "✨ 塩化水素とスズを利用した還元反応によりアニリンが合成されました！", "reduction_nitro", "アニリン", "N/A")
-    elif reagents == {"CC", "HCl"}:
-        custom_res = (["CCCl"], [], "✨ エタンと塩化水素からクロロエタンを合成しました！", "hydrohalogenation", "クロロエタン", "primary")
-    elif reagents == {"CC(O)C", "O=O"} and cat.startswith("Pd"):
-        custom_res = (["CC(=O)C"], ["H2O"], "✨ 2-プロパノールの触媒的酸化によりアセトンが合成されました！", "oxidation", "アセトン", "secondary")
-    elif (reagents == {"C", "N"} or reagents == {"C", "[NH3]"}):
-        custom_res = (["CNC"], [], "✨ メタンとアンモニアからジメチルアミンを合成しました！", "amination", "ジメチルアミン", "secondary")
-    elif reagents == {"CNC", "O=CO"} and cat.startswith("Acid"):
-        custom_res = (["O=CN(C)C"], ["H2O"], "✨ 酸触媒を用いたアミド化反応によりDMF（ジメチルホルムアミド）が生成されました！", "amidation", "DMF", "N/A")
+    recipe = find_open_world_recipe(r1, r2, cat)
 
-    if custom_res:
-        prs_smi, byprs, msg, rxn_type, pname, pclass = custom_res
-        prs = [ProductInfo(smiles=s, name=pname, carbon_class=pclass, reaction_type=rxn_type) for s in prs_smi]
+    if recipe:
+        recipe = copy.deepcopy(recipe) # 破壊防止
+        p_smi = recipe["product"]
+        p_name = recipe.get("product_name", "Unknown Product")
+        msg = recipe.get("message", "Reaction successful!")
+        rxn_type = recipe.get("reaction_type", "open_world")
+        byprods = recipe.get("byproducts", [])
+        
+        m_steps = recipe.get("mechanism_steps", [])
+        # 各ステップに PuzzleGraph を付与し、IDを変換する
+        for step in m_steps:
+            if "reactants_smiles" in step and step["reactants_smiles"]:
+                smi = ".".join(step["reactants_smiles"])
+                pg, m_map = generate_puzzle_graph(smi)
+                step["puzzle_graph"] = pg
+                # IDの変換 (atom_N -> atom_idx 等)
+                try:
+                    from rdkit import Chem
+                    mol = Chem.MolFromSmiles(smi)
+                    if mol:
+                        translate_mechanism_steps(step, m_map, mol)
+                except: pass
+
+        prs = [ProductInfo(smiles=p_smi, name=p_name, carbon_class="N/A", reaction_type=rxn_type)]
         return ReactResponse(
             status=ResultStatus.SUCCESS,
             message=msg,
@@ -1401,90 +984,11 @@ async def react(req: ReactRequest):
             reagent_2_smiles=r2,
             reaction_type=rxn_type,
             products=prs,
-            byproducts=byprs,
+            byproducts=byprods,
             condition_summary=f"Catalyst: {cat}" if cat else "No specific catalyst",
-            tier="tier1_rule"
-        )
-
-    # ==================================================================
-    # Open World Reaction Registry (Tier 1.5)
-    # ==================================================================
-    recipe = find_open_world_recipe(r1, r2, cat)
-    if recipe:
-        r_type = (recipe.get("reaction_type") or "").lower()
-        p_nodes = recipe.get("puzzle_nodes", [])
-        p_arrows = recipe.get("puzzle_arrows", [])
-        m_steps = recipe.get("mechanism_steps", [])
-
-        # 辞書に直接パズルがない場合の動的生成
-        if not p_nodes:
-            if "radical" in r_type:
-                p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
-                p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
-            elif "substitution" in r_type or "sn2" in r_type:
-                p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
-                p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
-            elif "elimination" in r_type or "e2" in r_type:
-                p_nodes = ["Base", "H(β)", "C(α)", "X"]
-                p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
-            elif "grignard reagent formation" == r_type:
-                p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
-                p_arrows = [["Mg", "R-X"]]
-            elif "grignard chain extension" == r_type:
-                p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
-                p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
-            elif "electrophilic" in r_type or "nitration" in r_type or "friedel_crafts" in r_type:
-                p_nodes = ["Benzene", "Electrophile(E⁺)", "Catalyst", "H⁺"]
-                p_arrows = [["Benzene", "Electrophile(E⁺)"], ["Electrophile(E⁺)", "H⁺"]]
-            elif "baeyer_drewson" in r_type:
-                p_nodes = ["Acetone", "OH⁻", "CHO", "NO₂"]
-                p_arrows = [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
-
-        if not m_steps:
-            if "radical" in r_type:
-                m_steps = [
-                    {
-                        "step_name": "開始反応 (Initiation)",
-                        "reactants_smiles": [r2],
-                        "arrows": [
-                            {"from": "bond_X_X", "to": "atom_X1", "type": "fishhook"},
-                            {"from": "bond_X_X", "to": "atom_X2", "type": "fishhook"}
-                        ],
-                        "intermediates_smiles": ["[X]", "[X]"]
-                    }
-                ]
-            elif "substitution" in r_type or "sn2" in r_type:
-                m_steps = [
-                    {
-                        "step_name": "SN2 置換 (S_N2)",
-                        "reactants_smiles": [r1, r2],
-                        "arrows": [
-                            {"from": "nucleophile", "to": "alpha_carbon", "type": "double"},
-                            {"from": "bond_C_X", "to": "leaving_group", "type": "double"}
-                        ],
-                        "intermediates_smiles": ["Products..."]
-                    }
-                ]
-            elif "electrophilic" in r_type or "nitration" in r_type or "friedel_crafts" in r_type:
-                p_nodes = ["Benzene", "Electrophile(E⁺)", "Catalyst", "H⁺"]
-                p_arrows = [["Benzene", "Electrophile(E⁺)"], ["Electrophile(E⁺)", "H⁺"]]
-            elif "baeyer_drewson" in r_type:
-                p_nodes = ["Acetone", "OH⁻", "CHO", "NO₂"]
-                p_arrows = [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
-
-        return ReactResponse(
-            status=ResultStatus.SUCCESS,
-            message=recipe.get("message", "✨ 反応成功！"),
-            reagent_1_smiles=r1,
-            reagent_2_smiles=r2,
-            reaction_type=recipe.get("reaction_type"),
-            products=[ProductInfo(smiles=recipe["product"], name=recipe.get("product_name", "生成物"), carbon_class="open_world", reaction_type=recipe.get("reaction_type"))],
-            byproducts=recipe.get("byproducts", []),
-            condition_summary=f"Open World Protocol (Cat: {cat})",
             tier="tier1_rule",
             mechanism_steps=m_steps,
-            puzzle_nodes=p_nodes,
-            puzzle_arrows=p_arrows
+            image_base64=generate_image_base64(p_smi)
         )
 
     # ==================================================================
@@ -1529,12 +1033,7 @@ async def react(req: ReactRequest):
     if rxn_type == "nanoputian_assembly":
         return _handle_nanoputian_assembly(req)
 
-    # ==================================================================
-    # Phase 5: インディゴルート反応 (トークンベース)
-    # ==================================================================
-    if rxn_type in ("nitration", "reduction_nitro", "vilsmeier_haack",
-                     "diazotization", "aldol_condensation", "oxidative_dimerization"):
-        return _handle_indigo_reactions(req, rxn_type)
+    # Phase 5 Indigo route is now handled by find_open_world_recipe
 
     # ==================================================================
     # Tier 1 で未定義 → Tier 2 AI 推論フォールバック
@@ -2089,142 +1588,7 @@ def _handle_nanoputian_assembly(req: ReactRequest) -> ReactResponse:
 #  SECTION 10b: Phase 5 – インディゴルート反応 (トークンベース)
 # =====================================================================
 
-# インディゴルート反応の定義マップ
-INDIGO_REACTIONS: dict[str, dict] = {
-    "nitration": {
-        "product": "NITROBENZENE",
-        "product_name": "ニトロベンゼン (Nitrobenzene)",
-        "byproducts": ["H2O"],
-        "message": (
-            "⚡ ニトロ化成功！\n\n"
-            "硫酸 (H₂SO₄) が触媒として NO₂⁺ イオンを生成し、\n"
-            "ベンゼン環の π 電子がこれを攻撃する。\n"
-            "これが「芳香族求電子置換反応 (EAS)」のニトロ化だ！\n\n"
-            "🧪 生成物: ニトロベンゼン (淡黄色の液体、アーモンドの匂い)"
-        ),
-        "condition": "c1ccccc1 + HNO3 → C₆H₅NO₂ + H₂O (EAS ニトロ化)",
-        "puzzle_nodes": ["Benzene", "NO₂⁺", "H⁺", "H₂SO₄"],
-        "puzzle_arrows": [["Benzene", "NO₂⁺"], ["NO₂⁺", "H⁺"]]
-    },
-    "reduction_nitro": {
-        "product": "ANILINE",
-        "product_name": "アニリン (Aniline)",
-        "byproducts": ["SnCl2", "H2O"],
-        "message": (
-            "🔄 還元成功！\n\n"
-            "スズ (Sn) と塩酸 (HCl) がニトロ基 (-NO₂) を\n"
-            "アミノ基 (-NH₂) に変換した。\n"
-            "これは Béchamp 還元として知られる古典的な方法だ。\n\n"
-            "🧪 生成物: アニリン (アミン特有の匂いを持つ液体)\n"
-            "💡 ヒント: アミノ基は高い求核性と電子供与性を持つ重要な官能基"
-        ),
-        "condition": "C₆H₅NO₂ + Sn/HCl → C₆H₅NH₂ (Béchamp 還元)",
-        "puzzle_nodes": ["-NO₂", "H⁺", "e⁻", "-NH₂"],
-        "puzzle_arrows": [["e⁻", "-NO₂"], ["-NO₂", "H⁺"]]
-    },
-    "vilsmeier_haack": {
-        "product": "2_AMINOBENZALDEHYDE",
-        "product_name": "2-アミノベンズアルデヒド (2-Aminobenzaldehyde)",
-        "byproducts": ["POCl3_waste"],
-        "message": (
-            "✨ Vilsmeier-Haack 反応成功！\n\n"
-            "DMF (ジメチルホルムアミド) と POCl₃ から\n"
-            "反応性の高い「Vilsmeier 試薬」が生成され、\n"
-            "アニリンのオルト位にアルデヒド基 (-CHO) を導入した。\n\n"
-            "🧪 生成物: 2-アミノベンズアルデヒド\n"
-            "💡 ヒント: -NH₂ 基がオルト/パラ位に電子を供与するため、\n"
-            "    オルト位が選択的にホルミル化される"
-        ),
-        "condition": "C₆H₅NH₂ + DMF/POCl₃ → 2-NH₂-C₆H₄-CHO (Vilsmeier-Haack)",
-        "puzzle_nodes": ["Aniline", "Vilsmeier試薬", "POCl₃", "CHO"],
-        "puzzle_arrows": [["Aniline", "Vilsmeier試薬"], ["Vilsmeier試薬", "POCl₃"]]
-    },
-    "diazotization": {
-        "product": "2_NITROBENZALDEHYDE",
-        "product_name": "2-ニトロベンズアルデヒド (2-Nitrobenzaldehyde)",
-        "byproducts": ["N2", "H2O"],
-        "message": (
-            "🌀 ジアゾ化 → Sandmeyer 型変換成功！\n\n"
-            "亜硝酸ナトリウム (NaNO₂) でアミノ基をジアゾニウム塩に変換し、\n"
-            "さらにニトロ基 (-NO₂) に変換した。\n"
-            "ジアゾ化は窒素ガス (N₂) の放出を駆動力とする反応だ。\n\n"
-            "🧪 生成物: 2-ニトロベンズアルデヒド (Baeyer-Drewson 法の基質)\n"
-            "💡 これがインディゴ合成の核心的な出発原料！"
-        ),
-        "condition": "2-NH₂-C₆H₄-CHO + NaNO₂ → 2-NO₂-C₆H₄-CHO + N₂ (ジアゾ化 + Sandmeyer)",
-        "puzzle_nodes": ["-NH₂", "NO⁺", "H₂O", "-N₂⁺"],
-        "puzzle_arrows": [["-NH₂", "NO⁺"], ["NO⁺", "H₂O"]]
-    },
-    "aldol_condensation": {
-        "product": "INDOXYL",
-        "product_name": "インドキシル (Indoxyl)",
-        "byproducts": ["H2O", "NaOH"],
-        "message": (
-            "🔮 Baeyer-Drewson 反応成功！\n\n"
-            "2-ニトロベンズアルデヒドとアセトンが\n"
-            "NaOH の塩基条件下でアルドール縮合を起こし、\n"
-            "同時にニトロ基の還元と環化が進行して\n"
-            "複素環「インドール骨格」が一気に構築された！\n\n"
-            "🧪 生成物: インドキシル (3-ヒドロキシインドール)\n"
-            "💡 これが酸化されるとインディゴになる最後の中間体"
-        ),
-        "condition": "2-NO₂-C₆H₄-CHO + CH₃COCH₃ + NaOH → Indoxyl (Baeyer-Drewson)",
-        "puzzle_nodes": ["Acetone", "OH⁻", "CHO", "NO₂"],
-        "puzzle_arrows": [["OH⁻", "Acetone"], ["Acetone", "CHO"]]
-    },
-    "oxidative_dimerization": {
-        "product": "INDIGO",
-        "product_name": "🔵 インディゴ (Indigo)",
-        "byproducts": ["H2O"],
-        "message": (
-            "🎉🔵 インディゴ合成達成！！！\n\n"
-            "インドキシルが空気中の酸素 (O₂) で酸化され、\n"
-            "2分子が C=C 二重結合で連結して「インディゴ」が完成！\n\n"
-            "✨ 巨大な共役系 (交互に並ぶ単結合と二重結合) が\n"
-            "   可視光の赤色成分を吸収し、美しい藍色を発色する。\n\n"
-            "🧪 この染料は5000年以上の歴史を持ち、\n"
-            "   ジーンズの「デニムブルー」の正体はインディゴ染料だ！\n\n"
-            "おめでとう！君はインディゴの全合成に成功した！"
-        ),
-        "condition": "2 × Indoxyl + O₂ → Indigo + H₂O (酸化二量化)",
-        "puzzle_nodes": ["Indoxyl", "O₂", "C=C", "H₂O"],
-        "puzzle_arrows": [["Indoxyl", "O₂"], ["O₂", "Indoxyl"]]
-    },
-}
-
-
-def _handle_indigo_reactions(req: ReactRequest, rxn_type: str) -> ReactResponse:
-    """Phase 5: インディゴルート反応 (トークンベースの特殊反応)"""
-    rxn_info = INDIGO_REACTIONS.get(rxn_type)
-    if rxn_info is None:
-        return ReactResponse(
-            status=ResultStatus.NO_REACTION,
-            message="❌ 未定義のインディゴルート反応です。",
-            reagent_1_smiles=req.reagent_1,
-            reagent_2_smiles=req.reagent_2,
-            reaction_type=rxn_type,
-        )
-
-    return ReactResponse(
-        status=ResultStatus.SUCCESS,
-        message=rxn_info["message"],
-        reagent_1_smiles=req.reagent_1,
-        reagent_2_smiles=req.reagent_2,
-        reaction_type=rxn_type,
-        products=[
-            ProductInfo(
-                smiles=rxn_info["product"],
-                name=rxn_info["product_name"],
-                carbon_class="indigo_route",
-                reaction_type=rxn_type,
-            )
-        ],
-        byproducts=rxn_info.get("byproducts", []),
-        condition_summary=rxn_info["condition"],
-        tier="tier1_rule",
-        puzzle_nodes=rxn_info.get("puzzle_nodes", []),
-        puzzle_arrows=rxn_info.get("puzzle_arrows", []),
-    )
+# INDIGO_REACTIONS moved to mechanisms_data.py
 
 
 # =====================================================================
@@ -2353,8 +1717,10 @@ async def _call_llm_structured_inference(r1: str, r2: str, cat: str) -> dict:
                 for step in data["mechanism_steps"]:
                     if "intermediates_smiles" in step and step["intermediates_smiles"]:
                         smi_for_graph = ".".join(step["intermediates_smiles"])
-                        step["puzzle_graph"] = generate_puzzle_graph(smi_for_graph)
-
+                        pg, m_map = generate_puzzle_graph(smi_for_graph)
+                        step["puzzle_graph"] = pg
+                        # 必要であれば translate もここで行うが、LLM出力が atom_N を使っているか不透明
+                        # 一旦 pg の生成のみ更新する
             return data
 
         except (httpx.TimeoutException, json.JSONDecodeError, ValueError, Exception) as e:
@@ -2391,33 +1757,74 @@ def generate_puzzle_graph(smiles1: str, smiles2: str = None) -> dict | None:
             
         mol = Chem.MolFromSmiles(combined_smiles)
         if not mol: return None
+        if not mol: return None, {}
         mol = Chem.AddHs(mol)
         AllChem.Compute2DCoords(mol)
         conf = mol.GetConformer()
         
         atoms = []
+        map_to_idx = {}
         for atom in mol.GetAtoms():
             pos = conf.GetAtomPosition(atom.GetIdx())
-            atoms.append({
-                "idx": atom.GetIdx(),
-                "symbol": atom.GetSymbol(),
-                "x": pos.x, "y": pos.y,
-                "is_reactive": True # LLM生成物の場合、とりあえず全て反応可能とする
-            })
+            m_num = atom.GetAtomMapNum()
+            if m_num > 0:
+                map_to_idx[m_num] = atom.GetIdx()
+                
+            atoms.append(AtomInfo(
+                idx=atom.GetIdx(),
+                symbol=atom.GetSymbol(),
+                x=pos.x, y=pos.y,
+                is_reactive=True
+            ))
             
         bonds = []
         for bond in mol.GetBonds():
-            bonds.append({
-                "begin_idx": bond.GetBeginAtomIdx(),
-                "end_idx": bond.GetEndAtomIdx(),
-                "order": float(bond.GetBondTypeAsDouble())
-            })
+            bonds.append(BondInfo(
+                begin_idx=bond.GetBeginAtomIdx(),
+                end_idx=bond.GetEndAtomIdx(),
+                order=float(bond.GetBondTypeAsDouble())
+            ))
             
-        return {"atoms": atoms, "bonds": bonds}
-    except ImportError:
-        return None # RDKitがない環境では座標なし
-    except Exception:
-        return None
+        return PuzzleGraph(atoms=atoms, bonds=bonds), map_to_idx
+    except Exception as e:
+        logger.error(f"Generate Puzzle Graph error: {e}")
+        return None, {}
+
+def translate_mechanism_steps(step: dict, map_to_idx: dict, mol: Chem.Mol):
+    """
+    atom_N -> atom_idx
+    bond_N_M -> bond_beginIdx_endIdx
+    """
+    arrows = step.get("arrows", [])
+    for arrow in arrows:
+        for key in ["from", "to"]:
+            val = arrow.get(key)
+            
+            if not isinstance(val, str): continue
+            
+            new_val = None
+            if val.startswith("atom_"):
+                try:
+                    m_num = int(val.split("_")[1])
+                    if m_num in map_to_idx:
+                        new_val = f"atom_{map_to_idx[m_num]}"
+                except: pass
+            elif val.startswith("bond_"):
+                try:
+                    parts = val.split("_")
+                    m1, m2 = int(parts[1]), int(parts[2])
+                    if m1 in map_to_idx and m2 in map_to_idx:
+                        idx1, idx2 = map_to_idx[m1], map_to_idx[m2]
+                        bond = mol.GetBondBetweenAtoms(idx1, idx2)
+                        if bond:
+                            b_start = bond.GetBeginAtomIdx()
+                            b_end = bond.GetEndAtomIdx()
+                            new_val = f"bond_{b_start}_{b_end}"
+                except: pass
+            
+            if new_val:
+                arrow[key] = new_val
+    return step
 
 # ゲームオーバー用ダミー生成物 (タール / 炭化物)
 TAR_SMILES: str = "C1=CC=CC=C1"  # ベンゼン (タールの簡略表現)

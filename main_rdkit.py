@@ -750,17 +750,18 @@ def generate_puzzle_graph(smiles1: str, smiles2: str = None) -> PuzzleGraph | No
         conf = mol.GetConformer()
         
         atoms = []
+        map_to_idx = {}
         for atom in mol.GetAtoms():
             pos = conf.GetAtomPosition(atom.GetIdx())
-            symbol = atom.GetSymbol()
-            # PoC: 水素以外の全重原子を反応点として許可する
-            is_reactive = symbol != "H"
+            map_num = atom.GetAtomMapNum()
+            if map_num > 0:
+                map_to_idx[map_num] = atom.GetIdx()
+            
             atoms.append(AtomInfo(
-                idx=atom.GetIdx(), 
-                symbol=symbol,
-                x=pos.x, 
-                y=pos.y, 
-                is_reactive=is_reactive
+                idx=atom.GetIdx(),
+                symbol=atom.GetSymbol(),
+                x=pos.x, y=pos.y,
+                is_reactive=True
             ))
             
         bonds = []
@@ -768,13 +769,66 @@ def generate_puzzle_graph(smiles1: str, smiles2: str = None) -> PuzzleGraph | No
             bonds.append(BondInfo(
                 begin_idx=bond.GetBeginAtomIdx(),
                 end_idx=bond.GetEndAtomIdx(),
-                order=bond.GetBondTypeAsDouble()
+                order=float(bond.GetBondTypeAsDouble())
             ))
             
-        return PuzzleGraph(atoms=atoms, bonds=bonds)
+        return PuzzleGraph(atoms=atoms, bonds=bonds), map_to_idx
     except Exception as e:
-        logger.error(f"Puzzle graph generation error: {e}")
-        return None
+        logger.error(f"Generate Puzzle Graph error: {e}")
+        return None, {}
+
+def translate_mechanism_steps(data, map_to_idx: dict, mol: Chem.Mol):
+    """
+    atom_N -> atom_idx
+    bond_N_M -> bond_beginIdx_endIdx
+    data: Either a single step dict or a list of step dicts
+    """
+    if isinstance(data, dict):
+        steps = [data]
+    elif isinstance(data, list):
+        steps = data
+    else:
+        return data
+
+    for step in steps:
+        # Pydantic オブジェクトか辞書かを判別
+        arrows = getattr(step, "arrows", None) or step.get("arrows", [])
+        for arrow in arrows:
+            # arrow もオブジェクトか辞書かを判別
+            for key in ["from", "to"]:
+                if hasattr(arrow, key):
+                    val = getattr(arrow, key)
+                else:
+                    val = arrow.get(key)
+                
+                if not isinstance(val, str): continue
+                
+                new_val = None
+                if val.startswith("atom_"):
+                    try:
+                        m_num = int(val.split("_")[1])
+                        if m_num in map_to_idx:
+                            new_val = f"atom_{map_to_idx[m_num]}"
+                    except: pass
+                elif val.startswith("bond_"):
+                    try:
+                        parts = val.split("_")
+                        m1, m2 = int(parts[1]), int(parts[2])
+                        if m1 in map_to_idx and m2 in map_to_idx:
+                            idx1, idx2 = map_to_idx[m1], map_to_idx[m2]
+                            bond = mol.GetBondBetweenAtoms(idx1, idx2)
+                            if bond:
+                                b_start = bond.GetBeginAtomIdx()
+                                b_end = bond.GetEndAtomIdx()
+                                new_val = f"bond_{b_start}_{b_end}"
+                    except: pass
+                
+                if new_val:
+                    if hasattr(arrow, key):
+                        setattr(arrow, key, new_val)
+                    else:
+                        arrow[key] = new_val
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +984,8 @@ async def handle_tier2_fallback(req: ReactRequest) -> ReactResponse:
             if "intermediates_smiles" in step and step["intermediates_smiles"]:
                 # 中間体が複数ある場合はドットで繋ぐ
                 smi = ".".join(step["intermediates_smiles"])
-                step["puzzle_graph"] = generate_puzzle_graph(smi)
+                pg, m_map = generate_puzzle_graph(smi)
+                step["puzzle_graph"] = pg
 
         final_smi = m_steps[-1]["intermediates_smiles"][0] if m_steps else TAR_SMILES
         img_b64 = generate_image_base64(final_smi)
@@ -941,7 +996,7 @@ async def handle_tier2_fallback(req: ReactRequest) -> ReactResponse:
             reagent_1_smiles=r1, reagent_2_smiles=r2,
             reaction_type="tier2_llm",
             products=[ProductInfo(smiles=final_smi, name=data.get("final_product_name", "AI生成物"))],
-            tier="tier2_llm", mechanism_steps=m_steps, ai_latency_seconds=elapsed,
+            tier="tier2_llm", ai_latency_seconds=elapsed,
             image_base64=img_b64
         )
     except Exception as e:
@@ -1012,31 +1067,35 @@ async def root():
 @app.post("/react", response_model=ReactResponse)
 async def react(req: ReactRequest):
     # ==================================================================
-    # カスタム触媒レシピ (新機能)
+    # カスタム触媒レシピ (新機能) - mechanisms_data.py から取得
     # ==================================================================
+    from mechanisms_data import OPEN_WORLD_REACTIONS, get_reaction_key
+    
     r1, r2 = req.reagent_1, req.reagent_2
     cat = req.catalyst or ""
-    reagents = {r1, r2}
+    key = get_reaction_key(r1, r2, cat)
     
-    custom_res = None
-    if reagents == {"C", "C"} and cat.startswith("Pt"):
-        custom_res = (["C#C"], ["H2"], "✨ メタンの脱水素カップリングによりアセチレンを合成しました！", "catalytic_coupling", "アセチレン", "N/A")
-    elif reagents == {"C#C", "C#C"} and cat.startswith("Fe"):
-        custom_res = (["c1ccccc1"], [], "✨ アセチレンの三量化環化によりベンゼン環が生成されました！", "cyclotrimerization", "ベンゼン", "N/A")
-    elif reagents == {"NITROBENZENE", "HCl"} and cat.startswith("Sn"):
-        custom_res = (["ANILINE"], ["H2O"], "✨ 塩化水素とスズを利用した還元反応によりアニリンが合成されました！", "reduction_nitro", "アニリン", "N/A")
-    elif reagents == {"CC", "HCl"}:
-        custom_res = (["CCCl"], [], "✨ エタンと塩化水素からクロロエタンを合成しました！", "hydrohalogenation", "クロロエタン", "primary")
-    elif reagents == {"CC(O)C", "O=O"} and cat.startswith("Pd"):
-        custom_res = (["CC(=O)C"], ["H2O"], "✨ 2-プロパノールの触媒的酸化によりアセトンが合成されました！", "oxidation", "アセトン", "secondary")
-    elif (reagents == {"C", "N"} or reagents == {"C", "[NH3]"}):
-        custom_res = (["CNC"], [], "✨ メタンとアンモニアからジメチルアミンを合成しました！", "amination", "ジメチルアミン", "secondary")
-    elif reagents == {"CNC", "O=CO"} and cat.startswith("Acid"):
-        custom_res = (["O=CN(C)C"], ["H2O"], "✨ 酸触媒を用いたアミド化反応によりDMF（ジメチルホルムアミド）が生成されました！", "amidation", "DMF", "N/A")
+    if key in OPEN_WORLD_REACTIONS:
+        recipe = OPEN_WORLD_REACTIONS[key]
+        p_smi = recipe["product"]
+        p_name = recipe.get("product_name", "Unknown Product")
+        msg = recipe.get("message", "Reaction successful!")
+        rxn_type = recipe.get("reaction_type", "open_world")
+        byprods = recipe.get("byproducts", [])
+        
+        m_steps = recipe.get("mechanism_steps", [])
+        # 各ステップに PuzzleGraph を付与し、IDを変換する
+        for step in m_steps:
+                if "intermediates_smiles" in step and step["intermediates_smiles"]:
+                    smi = ".".join(step["intermediates_smiles"])
+                    pg, m_map = generate_puzzle_graph(smi)
+                    step["puzzle_graph"] = pg
+                    # IDの変換 (atom_N -> atom_idx 等)
+                    mol = Chem.MolFromSmiles(smi)
+                    if mol:
+                        translate_mechanism_steps([step], m_map, mol)
 
-    if custom_res:
-        prs_smi, byprs, msg, rxn_type, pname, pclass = custom_res
-        prs = [ProductInfo(smiles=s, name=pname, carbon_class=pclass, reaction_type=rxn_type) for s in prs_smi]
+        prs = [ProductInfo(smiles=p_smi, name=p_name, carbon_class="N/A", reaction_type=rxn_type)]
         return ReactResponse(
             status=ResultStatus.SUCCESS,
             message=msg,
@@ -1044,10 +1103,11 @@ async def react(req: ReactRequest):
             reagent_2_smiles=r2,
             reaction_type=rxn_type,
             products=prs,
-            byproducts=byprs,
+            byproducts=byprods,
             condition_summary=f"Catalyst: {cat}" if cat else "No specific catalyst",
             tier="tier1_rule",
-            image_base64=generate_image_base64(prs_smi[0]) if prs_smi else None
+            mechanism_steps=m_steps,
+            image_base64=generate_image_base64(p_smi)
         )
 
     reagent1_mol = Chem.MolFromSmiles(req.reagent_1)
