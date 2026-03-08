@@ -334,7 +334,7 @@ _INDIGO_MAP = {
     "nitration": ("c1ccccc1", "HNO3", "Acid"),
     "reduction": ("O=[N+]([O-])c1ccccc1", "HCl", "Sn"),
     "vilsmeier_haack": ("Nc1ccccc1", "CN(C)C=O", "POCl3"),
-    "diazotization": ("Nc1c(C=O)cccc1", "NaNO2", "HNO3"),
+    "diazotization": ("Nc1c(C=O)cccc1", "[Na+].[O-]N=O", "HNO3"),
     "baeyer_drewson": ("O=[N+]([O-])c1c(C=O)cccc1", "CC(=O)C", "NaOH"),
     "oxidative_dimerization": ("Oc1c[nH]c2ccccc12", "O=O", "None"),
 }
