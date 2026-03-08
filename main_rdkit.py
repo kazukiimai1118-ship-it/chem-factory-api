@@ -103,6 +103,59 @@ HF_TIMEOUT_SECONDS: float = 15.0
 TAR_SMILES = "C1=CC=CC=C1"
 TAR_NAME = "🏭 タール / 炭化物"
 
+# キャッシュディレクトリ
+CACHE_DIR = "reaction_cache"
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
+
+# メカニズム生成プロンプト
+MECHANISM_PROMPT = """
+有機化学の反応物 {reagent1} と {reagent2} (触媒: {catalyst}) の反応について、
+電子の動きを記述した詳細な反応メカニズムを JSON 形式で生成せよ。
+
+以下の制約を厳守すること:
+1. 生成物と中間体は SMILES 形式とすること。
+2. 電子の移動 (Arrows) は "from" (atom/bond) と "to" (atom) を含むこと。
+3. 矢印のタイプは "double" (2電子) or "fishhook" (1電子) とすること。
+4. ステップ名 ("step_name") を含めること。
+
+出力 JSON スキーマ:
+{{
+  "mechanism_steps": [
+    {{
+      "step_name": "...",
+      "reactants_smiles": ["SMILES1", "SMILES2"],
+      "arrows": [
+        {{"from": "id1", "to": "id2", "type": "double/fishhook"}}
+      ],
+      "intermediates_smiles": ["SMILES_result"]
+    }}
+  ],
+  "final_product_name": "名称"
+}}
+"""
+
+def get_reaction_cache_path(r1: str, r2: str, cat: str) -> str:
+    key = f"{sorted([r1, r2])}:{cat}"
+    h = hashlib.sha256(key.encode()).hexdigest()
+    return os.path.join(CACHE_DIR, f"rxn_rdkit_{h}.json")
+
+def load_reaction_cache(r1: str, r2: str, cat: str) -> dict | None:
+    path = get_reaction_cache_path(r1, r2, cat)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception: pass
+    return None
+
+def save_reaction_cache(r1: str, r2: str, cat: str, data: dict):
+    path = get_reaction_cache_path(r1, r2, cat)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception: pass
+
 
 # ---------------------------------------------------------------------------
 # Open World Reaction Registry
@@ -131,6 +184,17 @@ OPEN_WORLD_REACTIONS = {
         "message": "✨ ラジカルハロゲン化成功！メタンからクロロメタンが合成された。",
         "byproducts": ["HCl"],
         "reaction_type": "radical_halogenation",
+        "mechanism_steps": [
+            {
+                "step_name": "開始反応 (Initiation)",
+                "reactants_smiles": ["Cl-Cl"],
+                "arrows": [
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl1", "type": "fishhook"},
+                    {"from": "bond_Cl_Cl", "to": "atom_Cl2", "type": "fishhook"}
+                ],
+                "intermediates_smiles": ["[Cl]", "[Cl]"]
+            }
+        ],
         "puzzle_nodes": ["R-H", "X·", "X₂", "R·", "hν"],
         "puzzle_arrows": [["X₂", "hν"], ["R-H", "X·"]]
     },
@@ -586,6 +650,21 @@ class ProductInfo(BaseModel):
     carbon_class: Optional[str] = None
     reaction_type: Optional[str] = None
 
+class MechanismArrow(BaseModel):
+    from_id: str = Field(..., alias="from")
+    to_id: str = Field(..., alias="to")
+    type: str = "double"  # "double" (2電子) or "fishhook" (1電子)
+
+    class Config:
+        populate_by_name = True
+
+class MechanismStep(BaseModel):
+    step_name: str
+    reactants_smiles: list[str] = Field(default_factory=list)
+    arrows: list[MechanismArrow] = Field(default_factory=list)
+    intermediates_smiles: list[str] = Field(default_factory=list)
+    puzzle_graph: Optional[PuzzleGraph] = None
+
 class AtomInfo(BaseModel):
     idx: int
     symbol: str
@@ -622,8 +701,9 @@ class ReactResponse(BaseModel):
     quiz_options: Optional[list[str]] = None
     quiz_correct_index: Optional[int] = None
     # --- パズル (メカニズム解析) 追加フィールド ---
-    puzzle_nodes: list[str] = Field(default_factory=list)
-    puzzle_arrows: list[list[str]] = Field(default_factory=list)
+    mechanism_steps: list[MechanismStep] = Field(default_factory=list)
+    puzzle_nodes: list[str] = Field(default_factory=list, description="Deprecated: Use mechanism_steps instead")
+    puzzle_arrows: list[list[str]] = Field(default_factory=list, description="Deprecated: Use mechanism_steps instead")
     puzzle_graph: Optional[PuzzleGraph] = Field(default=None, description="2Dキャンバス描画用の分子グラフデータ")
 
 
@@ -650,10 +730,14 @@ def generate_image_base64(smiles: str) -> Optional[str]:
         logger.warning(f"Image generation failed for SMILES '{smiles}': {e}")
         return None
 
-def generate_puzzle_graph(smiles1: str, smiles2: str) -> PuzzleGraph | None:
-    """反応物1と2を結合した状態の2D座標と結合リストを生成する"""
+def generate_puzzle_graph(smiles1: str, smiles2: str = None) -> PuzzleGraph | None:
+    """反応物1と2を結合した状態（または中間体単体）の2D座標と結合リストを生成する"""
     try:
-        combined_smiles = f"{smiles1}.{smiles2}"
+        if smiles2:
+            combined_smiles = f"{smiles1}.{smiles2}"
+        else:
+            combined_smiles = smiles1
+            
         mol = Chem.MolFromSmiles(combined_smiles)
         if not mol:
             return None
@@ -776,32 +860,114 @@ async def _call_hf_inference(reaction_smiles: str) -> dict:
         return {"success": False, "error": str(e), "latency": elapsed}
 
 async def handle_tier2_fallback(req: ReactRequest) -> ReactResponse:
-    if not HF_TOKEN:
-        # モック機能
-        import hashlib
-        seed = hashlib.md5(f"{req.reagent_1}:{req.reagent_2}".encode()).hexdigest()
-        fake = TAR_SMILES if seed[0] < '8' else "CCO"
-        
-        img_b64 = generate_image_base64(fake)
+    r1, r2, cat = req.reagent_1, req.reagent_2, req.catalyst or "None"
+    
+    # 1. キャッシュ
+    cached = load_reaction_cache(r1, r2, cat)
+    if cached:
+        m_steps = cached.get("mechanism_steps", [])
+        final_smi = m_steps[-1]["intermediates_smiles"][0] if m_steps else TAR_SMILES
+        img_b64 = generate_image_base64(final_smi)
         return ReactResponse(
-            status=ResultStatus.SUCCESS if fake != TAR_SMILES else ResultStatus.GAME_OVER,
-            message="🎲 Tier 2 モック (HF_TOKEN未設定)",
-            reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
-            reaction_type="tier2_mock", products=[ProductInfo(smiles=fake, name="Mock Product")],
-            tier="tier2_mock", ai_latency_seconds=0.0, ai_model="mock",
-            image_base64=img_b64,
-            rarity="SSR",
-            flavor_text="未知の組み合わせにより誕生したキモい副産物。取り扱い注意。",
-            quiz_question="想定外の副産物が生まれました。化学において最も重要な心構えは？",
-            quiz_options=["運を天に任せる", "安全第一で原因を記録する", "そのまま放置する"],
-            quiz_correct_index=1
+            status=ResultStatus.SUCCESS if final_smi != TAR_SMILES else ResultStatus.GAME_OVER,
+            message="✨ [Cache] AI 予測メカニズムを取得しました。",
+            reagent_1_smiles=r1, reagent_2_smiles=r2,
+            reaction_type="tier2_cached",
+            products=[ProductInfo(smiles=final_smi, name=cached.get("final_product_name", "AI生成物"))],
+            tier="tier2_cache", mechanism_steps=m_steps, image_base64=img_b64
         )
 
-    # 推論実行
-    reaction_input = f"{req.reagent_1}.{req.reagent_2}>>"
-    ai_result = await _call_hf_inference(reaction_input)
+    if not HF_TOKEN:
+        # モック
+        return _tier2_mock_response(req)
 
-    lat = ai_result.get("latency", 0.0)
+    # 2. LLM 推論
+    logger.info(f"Tier 2 LLM inference: {r1} + {r2}")
+    base_prompt = MECHANISM_PROMPT.format(reagent1=r1, reagent2=r2, catalyst=cat)
+    current_prompt = base_prompt
+    max_retries = 1
+    
+    start_time_all = time.perf_counter()
+    data = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.post(HF_API_URL, json={"inputs": current_prompt, "parameters": {"max_new_tokens": 1024, "temperature": 0.2 + (attempt * 0.1)}}, headers={"Authorization": f"Bearer {HF_TOKEN}"})
+            
+            elapsed = time.perf_counter() - start_time_all
+            if resp.status_code != 200:
+                raise ValueError(f"API {resp.status_code}")
+
+            raw_text = resp.json()[0]["generated_text"] if isinstance(resp.json(), list) else str(resp.json())
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if not json_match:
+                raise ValueError("No JSON block found")
+
+            data = json.loads(json_match.group())
+            if "mechanism_steps" not in data or "final_product_name" not in data:
+                raise ValueError("Incomplete JSON schema (missing mechanism_steps or final_product_name)")
+            
+            # 成功時
+            save_reaction_cache(r1, r2, cat, data)
+            break
+        except Exception as e:
+            logger.warning(f"LLM Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries:
+                current_prompt = (
+                    f"{base_prompt}\n\n"
+                    f"### PREVIOUS Erroneous Response ###\n{raw_text if 'raw_text' in locals() else 'None'}\n\n"
+                    f"### ERROR ###\n{str(e)}\n\n"
+                    f"指定されたスキーマに従って、有効なJSONのみを再出力してください。"
+                )
+                continue
+            else:
+                return _tier2_error_response(req, f"LLM failed after retries: {e}")
+        m_steps = data.get("mechanism_steps", [])
+        
+        # 各ステップに PuzzleGraph を付与
+        for step in m_steps:
+            if "intermediates_smiles" in step and step["intermediates_smiles"]:
+                # 中間体が複数ある場合はドットで繋ぐ
+                smi = ".".join(step["intermediates_smiles"])
+                step["puzzle_graph"] = generate_puzzle_graph(smi)
+
+        final_smi = m_steps[-1]["intermediates_smiles"][0] if m_steps else TAR_SMILES
+        img_b64 = generate_image_base64(final_smi)
+        
+        return ReactResponse(
+            status=ResultStatus.SUCCESS,
+            message="🤖 AI (LLM) によるメカニズム生成成功！",
+            reagent_1_smiles=r1, reagent_2_smiles=r2,
+            reaction_type="tier2_llm",
+            products=[ProductInfo(smiles=final_smi, name=data.get("final_product_name", "AI生成物"))],
+            tier="tier2_llm", mechanism_steps=m_steps, ai_latency_seconds=elapsed,
+            image_base64=img_b64
+        )
+    except Exception as e:
+        return _tier2_error_response(req, str(e))
+
+def _tier2_error_response(req: ReactRequest, error_msg: str) -> ReactResponse:
+    return ReactResponse(
+        status=ResultStatus.GAME_OVER,
+        message=f"💀 AI 推論失敗: {error_msg}\nタール化しました。",
+        reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
+        reaction_type="tier2_error",
+        products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME)],
+        tier="tier2_error"
+    )
+
+def _tier2_mock_response(req: ReactRequest) -> ReactResponse:
+    # 既存のモックロジックを整理して呼び出し
+    img_b64 = generate_image_base64(TAR_SMILES)
+    return ReactResponse(
+        status=ResultStatus.GAME_OVER,
+        message="🎲 Tier 2 モック (HF_TOKEN未設定/LLM無効)",
+        reagent_1_smiles=req.reagent_1, reagent_2_smiles=req.reagent_2,
+        reaction_type="tier2_mock", products=[ProductInfo(smiles=TAR_SMILES, name=TAR_NAME)],
+        tier="tier2_mock", ai_latency_seconds=0.0, ai_model="mock",
+        image_base64=img_b64
+    )
     
     if not ai_result["success"]:
         img_b64 = generate_image_base64(TAR_SMILES)
@@ -1094,24 +1260,34 @@ async def react(req: ReactRequest):
         r_type = (recipe.get("reaction_type") or "").lower()
         p_nodes = recipe.get("puzzle_nodes", [])
         p_arrows = recipe.get("puzzle_arrows", [])
+        m_steps = recipe.get("mechanism_steps", [])
 
         # 辞書に直接パズルがない場合の動的生成
-        if not p_nodes:
+        if not m_steps:
             if "radical" in r_type:
-                p_nodes = ["R-H", "X·", "X₂", "R·", "hν"]
-                p_arrows = [["X₂", "hν"], ["R-H", "X·"]]
+                m_steps = [
+                    {
+                        "step_name": "開始反応 (Initiation)",
+                        "reactants_smiles": [req.reagent_2],
+                        "arrows": [
+                            {"from": "bond_X_X", "to": "atom_X1", "type": "fishhook"},
+                            {"from": "bond_X_X", "to": "atom_X2", "type": "fishhook"}
+                        ],
+                        "intermediates_smiles": ["[X]", "[X]"]
+                    }
+                ]
             elif "substitution" in r_type or "sn2" in r_type:
-                p_nodes = ["Nu⁻", "C(α)", "X", "Solvent"]
-                p_arrows = [["Nu⁻", "C(α)"], ["C(α)", "X"]]
-            elif "elimination" in r_type or "e2" in r_type:
-                p_nodes = ["Base", "H(β)", "C(α)", "X"]
-                p_arrows = [["Base", "H(β)"], ["H(β)", "C(α)"], ["C(α)", "X"]]
-            elif "grignard reagent formation" == r_type:
-                p_nodes = ["R-X", "Mg", "Ether", "R-Mg-X"]
-                p_arrows = [["Mg", "R-X"]]
-            elif "grignard chain extension" == r_type:
-                p_nodes = ["R-Mg-X", "C=O / O=O", "Mg²⁺", "O⁻"]
-                p_arrows = [["R-Mg-X", "C=O / O=O"], ["C=O / O=O", "Mg²⁺"]]
+                m_steps = [
+                    {
+                        "step_name": "SN2 置換 (S_N2)",
+                        "reactants_smiles": [req.reagent_1, req.reagent_2],
+                        "arrows": [
+                            {"from": "nucleophile", "to": "alpha_carbon", "type": "double"},
+                            {"from": "bond_C_X", "to": "leaving_group", "type": "double"}
+                        ],
+                        "intermediates_smiles": ["Products..."]
+                    }
+                ]
             elif "electrophilic" in r_type or "nitration" in r_type or "friedel_crafts" in r_type:
                 p_nodes = ["Benzene", "Electrophile(E⁺)", "Catalyst", "H⁺"]
                 p_arrows = [["Benzene", "Electrophile(E⁺)"], ["Electrophile(E⁺)", "H⁺"]]
@@ -1123,17 +1299,15 @@ async def react(req: ReactRequest):
         p_graph = generate_puzzle_graph(req.reagent_1, req.reagent_2)
         return ReactResponse(
             status=ResultStatus.SUCCESS,
-            message=recipe["message"],
+            message=recipe.get("message", "✨ 反応成功！"),
             reagent_1_smiles=req.reagent_1,
             reagent_2_smiles=req.reagent_2,
-            reaction_type=recipe.get("reaction_type", "open_world_recipe"),
-            products=[ProductInfo(smiles=recipe["product"], name=recipe["product_name"])],
+            reaction_type=recipe.get("reaction_type"),
+            products=[ProductInfo(smiles=recipe["product"], name=recipe.get("product_name", "生成物"), carbon_class="open_world", reaction_type=recipe.get("reaction_type"))],
             byproducts=recipe.get("byproducts", []),
-            condition_summary=f"Catalyst: {req.catalyst or 'None'}",
-            tier="tier1_registry",
-            image_base64=img_b64,
-            rarity="SSR" if "💊" in recipe["product_name"] else "SR",
-            flavor_text=recipe.get("message", ""),
+            condition_summary=f"Open World Protocol (Cat: {req.catalyst})",
+            tier="tier1_rule",
+            mechanism_steps=m_steps,
             puzzle_nodes=p_nodes,
             puzzle_arrows=p_arrows,
             puzzle_graph=p_graph
