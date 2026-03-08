@@ -1420,37 +1420,43 @@ async def predict_reaction_endpoint(req: PredictReactionRequest):
     """
     r1 = req.reagent_1_smiles
     r2 = req.reagent_2_smiles
-    logger.info(f"Local Reaction Prediction requested: {r1} + {r2}")
+    logger.info(f"Refined Local Prediction: {r1} + {r2}")
     
-    # SMILESをソートして検索用のキーを作成 (順不同に対応)
-    c1 = _canon(r1); c2 = _canon(r2)
-    target_pair = sorted([c1, c2])
-    
-    # 既存のレシピ辞書を検索
-    found_recipe = None
-    for (k1, k2, kcat), recipe in OPEN_WORLD_REACTIONS.items():
-        if sorted([k1, k2]) == target_pair:
-            found_recipe = recipe
-            break
+    # 1. 同じ物質の衝突は即座に弾く
+    if r1 == r2:
+        return PredictReactionResponse(
+            reacts=False, 
+            reason="同じ物質同士では、この条件で反応は進行しません。"
+        )
 
-    if found_recipe:
-        # レシピに存在する場合：反応あり！
-        return PredictReactionResponse(
-            reacts=True,
-            target_smiles=found_recipe["product"],
-            reaction_name=found_recipe.get("product_name", found_recipe.get("reaction_type", "既知の反応"))
-        )
-    else:
-        # レシピに存在しない場合（メタン＋メタンなど）：反応なし！
-        if r1 == r2:
-            reason_msg = "同じ物質同士では、この条件で反応は進行しません。"
-        else:
-            reason_msg = "この組み合わせでは、有効な反応が起きずタール化します。"
+    # 2. 実際のレシピデータとの照合
+    try:
+        # すでにトップレベルやマージ処理で OPEN_WORLD_REACTIONS は準備されている
+        c1 = _canon(r1); c2 = _canon(r2)
+        target_pair = sorted([c1, c2])
+        
+        found_recipe = None
+        # 全触媒条件を探索
+        for (k1, k2, kcat), recipe in OPEN_WORLD_REACTIONS.items():
+            if sorted([k1, k2]) == target_pair:
+                found_recipe = recipe
+                break
+
+        if found_recipe:
+            return PredictReactionResponse(
+                reacts=True,
+                target_smiles=found_recipe["product"],
+                reaction_name=found_recipe.get("product_name", found_recipe.get("reaction_type", "既知の反応"))
+            )
             
-        return PredictReactionResponse(
-            reacts=False,
-            reason=reason_msg
-        )
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+
+    # 3. レシピに該当しない場合はタール化
+    return PredictReactionResponse(
+        reacts=False,
+        reason="この組み合わせでは有効な反応が起きず、タール化します。"
+    )
 
 
 if __name__ == "__main__":
